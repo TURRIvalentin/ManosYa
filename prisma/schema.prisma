@@ -1,5 +1,5 @@
-// ManosYa — Schema completo
-// Convención de nombres: PascalCase para modelos, camelCase para campos, UPPER_CASE para enums
+// ManosYa — Schema completo v2
+// Convención: PascalCase modelos, camelCase campos, UPPER_CASE enums
 
 generator client {
   provider = "prisma-client-js"
@@ -8,12 +8,11 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  // Para Neon: pooler en producción, directa en dev/migrations
   directUrl = env("DATABASE_DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AUTH (tablas requeridas por Auth.js / NextAuth v5)
+// AUTH (Auth.js / NextAuth v5)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model User {
@@ -26,22 +25,18 @@ model User {
   role          UserRole  @default(USER)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  // Soft delete: el usuario "borrado" se anonimiza después de 30 días (Ley 25.326)
+  deletedAt     DateTime?
 
-  // Auth.js relations
-  accounts Account[]
-  sessions Session[]
-
-  // Perfiles (un usuario puede ser cliente, prestador, o ambos)
-  clientProfile  ClientProfile?
+  accounts        Account[]
+  sessions        Session[]
+  clientProfile   ClientProfile?
   providerProfile ProviderProfile?
-
-  // Mensajería
-  sentMessages Message[]
-
-  // Notificaciones
-  notifications Notification[]
+  sentMessages    Message[]
+  notifications   Notification[]
 
   @@index([email])
+  @@index([deletedAt])
 }
 
 enum UserRole {
@@ -101,9 +96,7 @@ model ClientProfile {
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   requests Request[]
-
-  // Reseñas donde este usuario fue el cliente
-  reviews Review[]
+  reviews  Review[]
 
   @@index([userId])
 }
@@ -112,35 +105,36 @@ model ProviderProfile {
   id     String @id @default(cuid())
   userId String @unique
 
-  // Presentación
   bio       String? @db.Text
   avatarUrl String?
 
-  // Verificación
-  isVerified    Boolean   @default(false)
-  verifiedAt    DateTime?
-  verifiedById  String? // userId del admin que aprobó
-  dniUrl        String? // URL en R2
-  cuil          String?
-  licenseNumber String? // matrícula (gasistas, electricistas, etc.)
-  licenseType   String? // gasista_matriculado | electricista | etc.
-  licenseUrl    String? // URL en R2
+  // Verificación manual por admin
+  isVerified   Boolean   @default(false)
+  verifiedAt   DateTime?
+  verifiedById String?
+  dniUrl       String?
+  cuil         String?
+  // cuil tiene su propio validador de dígito verificador en src/lib/validations/cuil.ts
+  licenseNumber String?
+  licenseType   String?
+  licenseUrl    String?
 
-  // Métricas de reputación (desnormalizadas para performance en búsqueda)
+  // Rating desnormalizado para performance en búsqueda
+  // Actualizar con trigger/Server Action tras cada Review
   ratingAvg   Float @default(0)
   ratingCount Int   @default(0)
 
-  // Plan y suscripción
-  plan                Plan     @default(FREE)
+  plan                Plan      @default(FREE)
   planExpiresAt       DateTime?
-  isFeatured          Boolean  @default(false)
-  monthlyContactCount Int      @default(0)
-  monthlyContactReset DateTime? // fecha en que se resetea el contador mensual
+  isFeatured          Boolean   @default(false)
+  // Límite de contactos para plan FREE (se resetea el 1º de cada mes)
+  monthlyContactCount Int       @default(0)
+  monthlyContactReset DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   services      ProviderService[]
   zones         ProviderZone[]
   availability  ProviderAvailability[]
@@ -149,9 +143,11 @@ model ProviderProfile {
   subscriptions Subscription[]
 
   @@index([userId])
-  @@index([ratingAvg, ratingCount])
-  @@index([isVerified])
-  @@index([plan, isFeatured])
+  // Índice compuesto para ordenamiento en búsqueda: isFeatured DESC, ratingAvg DESC
+  @@index([isFeatured, ratingAvg])
+  // Para filtros combinados en búsqueda: verificado + plan + rating
+  @@index([isVerified, plan, ratingAvg])
+  @@index([ratingCount])
 }
 
 enum Plan {
@@ -168,12 +164,11 @@ model Category {
   slug        String  @unique
   name        String
   description String?
-  iconName    String? // nombre de ícono Lucide (e.g. "wrench", "zap")
+  iconName    String?
   imageUrl    String?
   sortOrder   Int     @default(0)
   isActive    Boolean @default(true)
 
-  // Jerarquía: categoría padre → subcategorías
   parentId String?
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children Category[] @relation("CategoryTree")
@@ -187,7 +182,7 @@ model Category {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ZONAS GEOGRÁFICAS (CABA y GBA)
+// ZONAS GEOGRÁFICAS
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Zone {
@@ -196,7 +191,6 @@ model Zone {
   name     String
   type     ZoneType
   province String   @default("Buenos Aires")
-  // Centroide aproximado para cálculo de distancia
   lat      Float?
   lng      Float?
 
@@ -212,7 +206,6 @@ enum ZoneType {
   PARTIDO_GBA
 }
 
-// Tabla de unión explícita Provider ↔ Zone (permite metadata futura, ej. radio)
 model ProviderZone {
   id                String @id @default(cuid())
   providerProfileId String
@@ -223,7 +216,8 @@ model ProviderZone {
 
   @@unique([providerProfileId, zoneId])
   @@index([providerProfileId])
-  @@index([zoneId])
+  // Orden invertido crítico: "dame todos los prestadores de la zona X"
+  @@index([zoneId, providerProfileId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,10 +231,13 @@ model ProviderService {
 
   title       String
   description String?   @db.Text
-  priceFrom   Float?
-  priceTo     Float?
-  priceUnit   PriceUnit @default(POR_TRABAJO)
-  isActive    Boolean   @default(true)
+  // Decimal(12,2): soporta hasta $9,999,999,999.99 ARS sin error de punto flotante
+  priceFrom      Decimal?  @db.Decimal(12, 2)
+  priceTo        Decimal?  @db.Decimal(12, 2)
+  priceUnit      PriceUnit @default(POR_TRABAJO)
+  // Permite mostrar "precio actualizado hace X días" en la UI
+  priceUpdatedAt DateTime?
+  isActive       Boolean   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -250,7 +247,8 @@ model ProviderService {
   images          ServiceImage[]
 
   @@index([providerProfileId])
-  @@index([categoryId])
+  // Índice compuesto para búsqueda: "prestadores de categoría X"
+  @@index([categoryId, providerProfileId, isActive])
   @@index([isActive])
 }
 
@@ -262,7 +260,7 @@ enum PriceUnit {
 }
 
 model ServiceImage {
-  id                String @id @default(cuid())
+  id                String  @id @default(cuid())
   providerServiceId String
   url               String
   altText           String?
@@ -273,14 +271,12 @@ model ServiceImage {
   @@index([providerServiceId])
 }
 
-// Disponibilidad horaria del prestador
 model ProviderAvailability {
   id                String @id @default(cuid())
   providerProfileId String
-
-  dayOfWeek Int    // 0 = Domingo, 6 = Sábado
-  startTime String // "09:00"
-  endTime   String // "18:00"
+  dayOfWeek         Int    // 0 = Domingo … 6 = Sábado
+  startTime         String // "09:00"
+  endTime           String // "18:00"
 
   providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
 
@@ -289,7 +285,7 @@ model ProviderAvailability {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SOLICITUDES DE PRESUPUESTO (REQUESTS)
+// SOLICITUDES (REQUESTS)
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Request {
@@ -298,16 +294,16 @@ model Request {
   categoryId      String
   zoneId          String
 
-  title           String
-  description     String        @db.Text
-  status          RequestStatus @default(OPEN)
-
-  // Si el pedido está dirigido a un prestador específico (en lugar de abierto)
+  title            String
+  description      String        @db.Text
+  status           RequestStatus @default(OPEN)
   targetProviderId String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-  expiresAt DateTime? // para pedidos abiertos que vencen
+  expiresAt DateTime?
+  // Soft delete: el cliente puede "eliminar" un pedido de su historial
+  deletedAt DateTime?
 
   clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id])
   category      Category      @relation(fields: [categoryId], references: [id])
@@ -319,18 +315,18 @@ model Request {
   review       Review?
 
   @@index([clientProfileId])
-  @@index([categoryId])
-  @@index([zoneId])
-  @@index([status, createdAt])
+  // Índice compuesto para feed de pedidos abiertos: zona + categoría + fecha
+  @@index([status, zoneId, categoryId, createdAt])
   @@index([targetProviderId])
+  @@index([deletedAt])
 }
 
 enum RequestStatus {
-  OPEN        // publicado, esperando presupuestos
-  QUOTED      // recibió al menos un presupuesto
-  HIRED       // el cliente aceptó un presupuesto
-  IN_PROGRESS // trabajo en curso
-  COMPLETED   // trabajo finalizado (habilita reseñas)
+  OPEN
+  QUOTED
+  HIRED
+  IN_PROGRESS
+  COMPLETED
   CANCELLED
   EXPIRED
 }
@@ -355,7 +351,8 @@ model Quote {
   requestId         String
   providerProfileId String
 
-  price         Float
+  // Decimal(12,2): consistencia con ProviderService.priceFrom/priceTo
+  price         Decimal     @db.Decimal(12, 2)
   currency      String      @default("ARS")
   estimatedDays Int?
   comment       String?     @db.Text
@@ -368,7 +365,6 @@ model Quote {
   request         Request         @relation(fields: [requestId], references: [id], onDelete: Cascade)
   providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id])
 
-  // Un prestador solo puede enviar un presupuesto por pedido
   @@unique([requestId, providerProfileId])
   @@index([requestId])
   @@index([providerProfileId])
@@ -379,7 +375,7 @@ enum QuoteStatus {
   PENDING
   ACCEPTED
   REJECTED
-  WITHDRAWN // el prestador retiró su oferta
+  WITHDRAWN
   EXPIRED
 }
 
@@ -389,16 +385,15 @@ enum QuoteStatus {
 
 model Conversation {
   id        String   @id @default(cuid())
-  requestId String   @unique // 1-a-1 con Request
+  requestId String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  request      Request                   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request      Request                  @relation(fields: [requestId], references: [id], onDelete: Cascade)
   messages     Message[]
   participants ConversationParticipant[]
 }
 
-// Tabla de participantes: permite saber lastReadAt por usuario
 model ConversationParticipant {
   id             String    @id @default(cuid())
   conversationId String
@@ -419,56 +414,58 @@ model Message {
 
   body          String      @db.Text
   type          MessageType @default(TEXT)
-  attachmentUrl String? // URL en R2 si type = IMAGE
+  attachmentUrl String?
 
   createdAt DateTime  @default(now())
-  readAt    DateTime? // null = no leído
+  readAt    DateTime?
+  // Soft delete: "borrar para mí" (similar a WhatsApp)
+  deletedAt DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
 
-  @@index([conversationId, createdAt])
+  // Índice compuesto para cargar historial excluyendo mensajes borrados
+  @@index([conversationId, deletedAt, createdAt])
   @@index([senderId])
 }
 
 enum MessageType {
   TEXT
   IMAGE
-  SYSTEM // mensajes automáticos del sistema ("Presupuesto aceptado", etc.)
+  SYSTEM
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RESEÑAS
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Una fila por trabajo completado. Contiene la reseña del cliente al prestador
-// Y opcionalmente la reseña del prestador al cliente.
-// Ambas se llenan en la misma fila (bidireccional dentro del registro).
 model Review {
-  id              String @id @default(cuid())
-  requestId       String @unique
-  clientProfileId String
+  id                String @id @default(cuid())
+  requestId         String @unique
+  clientProfileId   String
   providerProfileId String
 
-  // Reseña del cliente al prestador (obligatoria para completar el flujo)
-  clientRating     Int      // 1-5
-  clientComment    String?  @db.Text
-  clientReviewedAt DateTime?
+  clientRating       Int
+  clientComment      String?   @db.Text
+  clientReviewedAt   DateTime?
 
-  // Reseña del prestador al cliente (opcional)
   providerRating     Int?
-  providerComment    String? @db.Text
+  providerComment    String?   @db.Text
   providerReviewedAt DateTime?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  // Soft delete: admin puede ocultar reseñas abusivas sin destruir el historial
+  deletedAt DateTime?
 
   request         Request         @relation(fields: [requestId], references: [id])
   clientProfile   ClientProfile   @relation(fields: [clientProfileId], references: [id])
   providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id])
 
-  @@index([providerProfileId, clientReviewedAt])
+  // Índice compuesto para perfil de prestador: reseñas activas ordenadas por fecha
+  @@index([providerProfileId, deletedAt, clientReviewedAt])
   @@index([clientProfileId])
+  @@index([deletedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -482,13 +479,13 @@ model Subscription {
   plan   Plan
   status SubscriptionStatus
 
-  // IDs de Mercado Pago para reconciliación
   mpPreferenceId String?
   mpPaymentId    String?
-  mpExternalRef  String? @unique // referencia externa que enviamos a MP
+  mpExternalRef  String? @unique
 
-  amount   Float
-  currency String @default("ARS")
+  // Decimal(12,2): sin errores de flotante en importes de suscripción
+  amount   Decimal @db.Decimal(12, 2)
+  currency String  @default("ARS")
 
   startsAt    DateTime
   endsAt      DateTime
@@ -505,7 +502,7 @@ model Subscription {
 }
 
 enum SubscriptionStatus {
-  PENDING     // esperando confirmación de pago
+  PENDING
   ACTIVE
   CANCELLED
   EXPIRED
@@ -517,17 +514,15 @@ enum SubscriptionStatus {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Notification {
-  id     String           @id @default(cuid())
-  userId String
-  type   NotificationType
-
-  title   String
-  body    String
-  data    Json? // metadata extra (e.g. { requestId, quoteId })
-  readAt  DateTime?
+  id          String           @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  body        String
+  data        Json?
+  readAt      DateTime?
   emailSentAt DateTime?
-
-  createdAt DateTime @default(now())
+  createdAt   DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -536,13 +531,13 @@ model Notification {
 }
 
 enum NotificationType {
-  NEW_QUOTE            // cliente recibió un presupuesto
-  QUOTE_ACCEPTED       // prestador: su presupuesto fue aceptado
-  QUOTE_REJECTED       // prestador: su presupuesto fue rechazado
-  NEW_MESSAGE          // nuevo mensaje en una conversación
-  REQUEST_COMPLETED    // trabajo marcado como completado
-  REVIEW_RECEIVED      // alguien te dejó una reseña
-  VERIFICATION_APPROVED // admin aprobó verificación de prestador
+  NEW_QUOTE
+  QUOTE_ACCEPTED
+  QUOTE_REJECTED
+  NEW_MESSAGE
+  REQUEST_COMPLETED
+  REVIEW_RECEIVED
+  VERIFICATION_APPROVED
   SUBSCRIPTION_RENEWED
   SUBSCRIPTION_EXPIRED
   SUBSCRIPTION_FAILED
@@ -552,14 +547,13 @@ enum NotificationType {
 // ADMIN
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Log de acciones administrativas para auditoría
 model AuditLog {
   id         String   @id @default(cuid())
-  adminId    String   // userId del admin
-  action     String   // e.g. "VERIFY_PROVIDER", "BAN_USER", "APPROVE_REVIEW"
-  targetType String   // e.g. "ProviderProfile", "User", "Review"
+  adminId    String
+  action     String
+  targetType String
   targetId   String
-  metadata   Json?    // datos adicionales del contexto
+  metadata   Json?
   ipAddress  String?
   createdAt  DateTime @default(now())
 
@@ -568,16 +562,15 @@ model AuditLog {
   @@index([createdAt])
 }
 
-// Contenido reportado por usuarios (moderación)
 model Report {
   id         String       @id @default(cuid())
-  reporterId String       // userId que reporta
-  targetType String       // "Review" | "ProviderProfile" | "Message"
+  reporterId String
+  targetType String
   targetId   String
   reason     ReportReason
   comment    String?      @db.Text
   status     ReportStatus @default(PENDING)
-  resolvedBy String?      // adminId
+  resolvedBy String?
   resolvedAt DateTime?
   createdAt  DateTime     @default(now())
 

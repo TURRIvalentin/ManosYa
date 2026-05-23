@@ -82,20 +82,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     // signIn: ejecutado después de authorize() o después del callback OAuth.
     async signIn({ user, account }) {
-      // Para Google OAuth: verificar que el usuario no fue soft-deleted
       if (account?.provider !== "credentials") {
+        // Flujo OAuth (Google, etc.)
         if (user.email) {
           const dbUser = await db.user.findUnique({
             where: { email: user.email },
-            select: { deletedAt: true },
+            select: { deletedAt: true, passwordHash: true },
           });
+
+          // Cuenta eliminada → denegar
           if (dbUser?.deletedAt) return false;
+
+          // ACCOUNT CONFLICT: la cuenta ya existe con contraseña (Credentials).
+          // Permitir la vinculación automática sería un vector de account takeover:
+          // alguien con acceso al email Google podría apropiarse de una cuenta
+          // con contraseña sin conocerla. Bloqueamos y mostramos instrucción clara.
+          // Resolución manual: el usuario inicia sesión con contraseña y desde
+          // Perfil > Seguridad vincula la cuenta OAuth con un botón explícito.
+          // Ver docs/auth.md § "Conflicto de providers".
+          if (dbUser?.passwordHash) {
+            return `/auth/error?code=OAuthAccountConflict&provider=${account.provider}`;
+          }
         }
         return true;
       }
 
-      // Para Credentials: bloquear si el email no fue verificado.
-      // Retornar una URL hace que Auth.js redirija sin crear sesión.
+      // Flujo Credentials: bloquear si el email no fue verificado.
+      // Retornar una URL hace que Auth.js redirija sin crear sesión,
+      // evitando el error genérico "CredentialsSignin".
       const emailVerified = (user as { emailVerified: Date | null }).emailVerified;
       if (!emailVerified) {
         return `/auth/verify-email?unverified=${encodeURIComponent(user.email ?? "")}`;

@@ -42,13 +42,57 @@ export async function requireAdmin(): Promise<SessionUser> {
 }
 
 /**
- * Returns true when the user has at least one profile (client or provider).
- * Used by the home page Server Component to redirect to onboarding when needed.
+ * Client onboarding: a clientProfile row exists.
+ * No extra requirements — clients don't need CUIL or documents.
+ */
+export async function hasClientOnboarded(userId: string): Promise<boolean> {
+  const profile = await db.clientProfile.findUnique({
+    where: { userId },
+    select: { userId: true },
+  });
+  return !!profile;
+}
+
+/**
+ * Provider onboarding is complete when ALL of these are true:
+ *   1. providerProfile row exists
+ *   2. cuil is filled (validated at form level via cuilSchema)
+ *   3. at least 1 ProviderZone linked
+ *   4. at least 1 ProviderService with isActive = true
+ *
+ * Documents (dniUrl, licenseUrl) are NOT required here — admin verifies
+ * them asynchronously. The provider can operate (plan FREE) while pending.
+ * emailVerified is enforced upstream by requireVerifiedEmail() before
+ * this function is ever reached.
+ */
+export async function hasProviderOnboarded(userId: string): Promise<boolean> {
+  const profile = await db.providerProfile.findUnique({
+    where: { userId },
+    select: {
+      cuil: true,
+      _count: {
+        select: {
+          zones: true,
+          services: { where: { isActive: true } },
+        },
+      },
+    },
+  });
+
+  if (!profile?.cuil) return false;
+  if (profile._count.zones < 1) return false;
+  if (profile._count.services < 1) return false;
+  return true;
+}
+
+/**
+ * Returns true when the user has completed onboarding for at least one role.
+ * Used by the home page Server Component to redirect to /onboarding when needed.
  */
 export async function hasCompletedOnboarding(userId: string): Promise<boolean> {
   const [client, provider] = await Promise.all([
-    db.clientProfile.findUnique({ where: { userId }, select: { userId: true } }),
-    db.providerProfile.findUnique({ where: { userId }, select: { userId: true } }),
+    hasClientOnboarded(userId),
+    hasProviderOnboarded(userId),
   ]);
-  return !!(client || provider);
+  return client || provider;
 }

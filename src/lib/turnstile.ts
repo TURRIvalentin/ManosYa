@@ -2,11 +2,11 @@ const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverif
 
 export async function verifyTurnstile(token: string): Promise<boolean> {
   const secret = process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY;
-  if (!secret) {
-    // In development without a key configured, skip verification
-    if (process.env.NODE_ENV === "development") return true;
+  // Dev-only skip: NODE_ENV is the gate, not the absence of the key.
+  // Missing key in staging/production → throw, never skip silently.
+  if (!secret && process.env.NODE_ENV !== "development")
     throw new Error("CLOUDFLARE_TURNSTILE_SECRET_KEY is not set");
-  }
+  if (!secret) return true;
 
   const res = await fetch(SITEVERIFY_URL, {
     method: "POST",

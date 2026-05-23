@@ -23,6 +23,8 @@ model User {
   image         String?
   phone         String?
   role          UserRole  @default(USER)
+  // Argon2id hash (null para usuarios OAuth-only)
+  passwordHash  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   // Soft delete: el usuario "borrado" se anonimiza después de 30 días (Ley 25.326)

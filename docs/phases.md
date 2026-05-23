@@ -91,52 +91,154 @@ Cada fase termina con un criterio verificable. No se avanza a la siguiente sin e
 
 ## Fase 4 — Mensajería (polling-first)
 
-**Objetivo:** Cliente y prestador pueden chatear en tiempo real dentro de un pedido.
+**Objetivo:** Cliente y prestador pueden chatear dentro de un pedido con latencia aceptable y sin introducir infraestructura WebSocket antes de que haya demanda real.
 
-**Decisión de arquitectura: polling HTTP, no WebSockets**
+### Decisión de arquitectura: short polling HTTP configurable
 
-El chat arranca con polling cada 3 segundos:
 ```
-GET /api/conversations/[id]/messages?after={timestamp}
-→ devuelve mensajes nuevos desde ese timestamp
-→ el cliente actualiza la UI con los mensajes nuevos
+GET /api/conversations/[id]/messages?after={ISO_timestamp}
+
+→ Retorna array de mensajes nuevos desde ese timestamp
+→ Si vacío, retorna [] (no es un error)
+→ El cliente scheduling el próximo poll al recibir la respuesta
 ```
 
-**Por qué polling primero:**
-- Cero dependencias externas (no Pusher, no WebSocket server)
-- Cero costo adicional (solo invocaciones Vercel Functions, cubiertas por el plan)
-- Para un marketplace de servicios (no un chat de alta frecuencia), 3s de latencia es aceptable
-- Implementación en < 1 día vs varios días para WebSockets + autenticación de canal
-- El índice parcial `idx_message_poll` ya está diseñado para esta query
+**Por qué polling, no long polling, no WebSockets:**
+- Cero dependencias externas, cero configuración de infraestructura
+- Implementación en <1 día vs días para WebSockets + auth de canal + manejo de reconexión
+- Para un marketplace de servicios, 5s de latencia percibida es aceptable: los usuarios
+  no están en tiempo real en el mismo segundo; mandan un mensaje y esperan la respuesta
+- El índice `idx_message_poll` en `indexes.sql` ya cubre exactamente esta query
 
-**Threshold para migrar a Pusher:**
-Evaluar migración cuando se den DOS de estas condiciones:
-1. > 50 conversaciones simultáneamente activas (usuarios escribiendo en tiempo real)
-2. Quejas de usuarios sobre latencia en el chat (encuesta NPS o reviews)
-3. Costo de polling supera $30/mes en Vercel (estimado: ~500K req/día → plan Pro)
+**Long polling descartado:** aunque reduce el número de requests, en Vercel Functions es
+prohibitivamente caro porque el costo se calcula por **GB-hora** (duración × memoria).
+Una función que espera 15s promedio en lugar de 50ms ocupa ~300× más GB-horas.
+Ver tabla de costos abajo.
 
-**Estimación de costos Pusher si se migra:**
-| Escenario | Mensajes/día | Plan Pusher | Costo |
+---
+
+### (a) Intervalo configurable por variable de entorno
+
+```bash
+# .env.local — arranca en 5s, no 3s
+NEXT_PUBLIC_CHAT_POLL_INTERVAL_MS=5000
+```
+
+```ts
+// src/hooks/useChat.ts (Fase 4)
+const POLL_INTERVAL = Number(
+  process.env.NEXT_PUBLIC_CHAT_POLL_INTERVAL_MS ?? "5000"
+);
+```
+
+El intervalo de **5 segundos** es el default porque:
+- El costo mensual a 50 screens activos es ~$30 (dentro del plan Pro)
+- 5s de latencia en un chat de marketplace es invisible para el usuario
+- Si se detectan quejas de latencia, bajar a 3s es un cambio de una variable, no un deploy
+
+---
+
+### (b) Page Visibility API — pausar polling con tab oculta
+
+```ts
+// Pausa automática cuando el usuario cambia de pestaña o minimiza el navegador
+// Economiza requests en segundo plano; retoma inmediatamente al volver
+useEffect(() => {
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible") {
+      startPolling();   // poll inmediato al volver + rearrancar interval
+    } else {
+      stopPolling();
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibility);
+  return () => document.removeEventListener("visibilitychange", handleVisibility);
+}, []);
+```
+
+Esto reduce el número de requests ~40-60% asumiendo que los usuarios tienen otras
+pestañas abiertas o usan el celular con la pantalla apagada mientras esperan respuesta.
+
+---
+
+### (c) Estimación de costos — Vercel Pro (short polling vs long polling vs Pusher)
+
+**Supuestos:**
+- Vercel Pro: $20/mes base + $0.60/1M invocaciones + $0.18/GB-hora (100 GB-hora free)
+- Función de poll: 50ms ejecución, 128 MB RAM
+- Uso activo: 16 h/día, 30 días/mes
+
+| Escenario | Concurrent screens | Req/día (5s) | Req/mes | Costo polling/mes | Long polling (15s avg) | Pusher |
+|---|---|---|---|---|---|---|
+| **Temprano** | 50 | 576 K | 17.3 M | **~$30** | ~$195 ⚠️ | Sandbox $0 |
+| **Crecimiento** | 200 | 2.3 M | 69 M | **~$65** | ~$780 🚫 | Startup $49 |
+| **Escala** | 500 | 5.76 M | 173 M | **~$159** | ~$1.950 🚫 | Startup $49 |
+
+> **Long polling es 4-12× más caro que short polling en Vercel Functions** porque
+> el costo por GB-hora domina. Solo tiene sentido en un servidor persistente (EC2, Railway).
+
+**Cálculo detallado escenario "Crecimiento" (200 screens, 5s):**
+```
+req/mes = 200 screens × 720 polls/h × 16h × 30 días = 69.12M
+invocaciones: (69.12M - 1M free) × $0.60/M = $40.87
+GB-horas: 69.12M × 0.05s / 3600 × 0.125 GB = 120 GB-h
+duración: (120 - 100 free) × $0.18 = $3.65
+Total: $20 + $40.87 + $3.65 ≈ $65/mes
+```
+
+---
+
+### Threshold para migrar a Pusher
+
+Evaluar la migración cuando se cumplan **al menos dos** de estas condiciones:
+
+1. **Costo:** bill mensual de Vercel atribuible a chat > $45/mes (~180 screens simultáneos)
+2. **Latencia:** usuarios reportan demoras en el chat (NPS o Play Store reviews)
+3. **Escala:** más de 200 conversaciones simultáneamente activas de forma sostenida (>3 semanas)
+
+El gatillo económico (\#1) es el más objetivo. Con 200 screens, polling cuesta ~$65/mes
+y Pusher Startup cuesta $49/mes + gastos mínimos de envío de eventos. La diferencia ya
+justifica la migración.
+
+**Estimación Pusher al migrar:**
+
+| Daily active chats | Mensajes enviados/día (est.) | Plan Pusher | Costo total (Pusher + Vercel envío) |
 |---|---|---|---|
-| 0-500 chats activos/día | < 200K | Sandbox | $0 |
-| 500-2000 chats/día | < 5M | Startup | $49/mes |
-| > 5000 chats/día | > 5M | Business | $299/mes |
+| < 500 | < 50 K | Sandbox (gratis) | ~$20 (base Vercel) |
+| 500–3.000 | 50 K–500 K | Startup $49/mes | ~$70/mes |
+| > 3.000 | > 500 K | Business $299/mes | ~$320/mes |
 
-**Features:**
-- UI tipo WhatsApp: burbujas, tilde enviado/leído, input fijo abajo, scroll al final
-- Polling de mensajes nuevos (`useEffect` + interval de 3s cuando la pestaña está visible)
-- Pause polling cuando la tab está en background (Page Visibility API)
-- Contador de no leídos (badge en bottom nav)
-- Adjuntar imagen (captura de cámara, subir a R2)
-- Mensajes de sistema automáticos ("Presupuesto aceptado", "Trabajo completado")
-- Notificaciones por email cuando hay mensaje nuevo y el usuario no está online
+---
+
+### Features de Fase 4
+
+- UI tipo WhatsApp: burbujas con tail, timestamp, tilde enviado/leído, input fijo abajo,
+  scroll automático al último mensaje, skeleton loader en carga inicial
+- Tombstone en mensajes borrados: `[Mensaje eliminado]` (patrón `isDeleted` del schema)
+- Optimistic UI: el mensaje aparece en la burbuja del sender inmediatamente (antes del ACK),
+  con estado "enviando…" que se reemplaza por el timestamp al confirmar
+- Pause/resume por Page Visibility API
+- Contador de no leídos en badge de bottom nav (se actualiza en cada poll)
+- Adjuntar imagen desde cámara (compresión antes de subir a R2)
+- Mensajes de sistema automáticos: "Presupuesto aceptado", "Trabajo completado"
+- Notificación por email vía Resend cuando hay mensaje nuevo y el receptor no está activo
+  (definición de "activo": no hizo poll en los últimos 30s)
 
 **Criterio de listo:**
-- [ ] Mensaje enviado aparece en < 3.5s en el otro extremo
+- [ ] Mensaje aparece en el otro extremo en ≤ `CHAT_POLL_INTERVAL_MS + 500ms`
+- [ ] Polling se pausa al ocultar la pestaña y rearrancan al volver (verificar en DevTools Network)
+- [ ] Mensaje eliminado por el sender muestra `[Mensaje eliminado]` en ambos lados
+- [ ] Optimistic UI: burbuja aparece antes del ACK del servidor
 - [ ] Badge de no leídos se actualiza correctamente
 - [ ] Chat funciona en 3G simulado sin spinners (skeleton + optimistic UI)
 
 **Complejidad:** Media (sin la complejidad de WebSockets)
+
+**Variable de entorno a agregar antes de Fase 4:**
+```bash
+# .env.example
+NEXT_PUBLIC_CHAT_POLL_INTERVAL_MS=5000
+```
 
 ---
 

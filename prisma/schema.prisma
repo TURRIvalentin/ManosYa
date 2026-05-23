@@ -412,21 +412,29 @@ model Message {
   conversationId String
   senderId       String
 
+  // Cuando isDeleted = true, body se vacía en la mutación y la UI
+  // muestra "[Mensaje eliminado]". Preserva la continuidad de la conversación.
+  // Este flag lo activan TANTO el sender (ventana de 5 min) COMO un admin.
   body          String      @db.Text
   type          MessageType @default(TEXT)
   attachmentUrl String?
 
   createdAt DateTime  @default(now())
   readAt    DateTime?
-  // Soft delete: "borrar para mí" (similar a WhatsApp)
-  deletedAt DateTime?
+
+  // Tombstone pattern: no deletedAt, el mensaje sigue existiendo con body=""
+  isDeleted  Boolean   @default(false)
+  // Registra quién eliminó (userId), para AuditLog y para mostrar "Eliminado por admin" si aplica
+  deletedById String?
+  deletedAt  DateTime? // timestamp de la eliminación (para analytics, no para filtrar)
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User         @relation(fields: [senderId], references: [id])
 
-  // Índice compuesto para cargar historial excluyendo mensajes borrados
-  @@index([conversationId, deletedAt, createdAt])
+  // Índice principal para polling: mensajes vivos de una conversación desde timestamp X
+  @@index([conversationId, createdAt])
   @@index([senderId])
+  @@index([isDeleted, conversationId]) // para queries de conteo de mensajes activos
 }
 
 enum MessageType {

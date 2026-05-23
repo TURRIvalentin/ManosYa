@@ -127,7 +127,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         emailVerified: Date | null;
       };
 
-      // En trigger "update" (e.g. cliente llama session.update() tras verificar email)
+      // BUG KNOWN en Auth.js v5 (handle-login.ts:279):
+      //   createUser({ ...profile, emailVerified: null })
+      // Para OAuth, emailVerified se sobreescribe explícitamente a null sin importar
+      // lo que el provider devuelva (Google devuelve email_verified: true).
+      // El jwt callback recibe el user post-createUser → token.emailVerified = null.
+      // Sin este guard, requireVerifiedEmail() bloquearía a todos los usuarios de Google.
+      // Solución: confiar en el proveedor OAuth y setear emailVerified = now, corrigiendo
+      // el token y la DB en el mismo paso.
+      if (
+        params.trigger === "signIn" &&
+        params.account?.provider !== "credentials" &&
+        !token.emailVerified
+      ) {
+        const now = new Date();
+        token.emailVerified = now;
+        if (token.id) {
+          // Corregir DB en background — el token ya tiene el valor correcto
+          db.user
+            .update({ where: { id: token.id }, data: { emailVerified: now } })
+            .catch(() => undefined);
+        }
+      }
+
+      // En trigger "update" (e.g. cliente llama session.update() tras cambio de rol)
       // refrescar role y emailVerified desde la DB para reflejar cambios inmediatos.
       if (params.trigger === "update" && token.id) {
         const dbUser = await db.user.findUnique({

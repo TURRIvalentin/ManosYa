@@ -1,0 +1,602 @@
+// ManosYa — Schema completo
+// Convención de nombres: PascalCase para modelos, camelCase para campos, UPPER_CASE para enums
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Para Neon: pooler en producción, directa en dev/migrations
+  directUrl = env("DATABASE_DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH (tablas requeridas por Auth.js / NextAuth v5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  phone         String?
+  role          UserRole  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth.js relations
+  accounts Account[]
+  sessions Session[]
+
+  // Perfiles (un usuario puede ser cliente, prestador, o ambos)
+  clientProfile  ClientProfile?
+  providerProfile ProviderProfile?
+
+  // Mensajería
+  sentMessages Message[]
+
+  // Notificaciones
+  notifications Notification[]
+
+  @@index([email])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERFILES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ClientProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests Request[]
+
+  // Reseñas donde este usuario fue el cliente
+  reviews Review[]
+
+  @@index([userId])
+}
+
+model ProviderProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // Presentación
+  bio       String? @db.Text
+  avatarUrl String?
+
+  // Verificación
+  isVerified    Boolean   @default(false)
+  verifiedAt    DateTime?
+  verifiedById  String? // userId del admin que aprobó
+  dniUrl        String? // URL en R2
+  cuil          String?
+  licenseNumber String? // matrícula (gasistas, electricistas, etc.)
+  licenseType   String? // gasista_matriculado | electricista | etc.
+  licenseUrl    String? // URL en R2
+
+  // Métricas de reputación (desnormalizadas para performance en búsqueda)
+  ratingAvg   Float @default(0)
+  ratingCount Int   @default(0)
+
+  // Plan y suscripción
+  plan                Plan     @default(FREE)
+  planExpiresAt       DateTime?
+  isFeatured          Boolean  @default(false)
+  monthlyContactCount Int      @default(0)
+  monthlyContactReset DateTime? // fecha en que se resetea el contador mensual
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services      ProviderService[]
+  zones         ProviderZone[]
+  availability  ProviderAvailability[]
+  quotes        Quote[]
+  reviews       Review[]
+  subscriptions Subscription[]
+
+  @@index([userId])
+  @@index([ratingAvg, ratingCount])
+  @@index([isVerified])
+  @@index([plan, isFeatured])
+}
+
+enum Plan {
+  FREE
+  PRO
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CATEGORÍAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Category {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  iconName    String? // nombre de ícono Lucide (e.g. "wrench", "zap")
+  imageUrl    String?
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+
+  // Jerarquía: categoría padre → subcategorías
+  parentId String?
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+
+  providerServices ProviderService[]
+  requests         Request[]
+
+  @@index([slug])
+  @@index([parentId])
+  @@index([isActive, sortOrder])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ZONAS GEOGRÁFICAS (CABA y GBA)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Zone {
+  id       String   @id @default(cuid())
+  slug     String   @unique
+  name     String
+  type     ZoneType
+  province String   @default("Buenos Aires")
+  // Centroide aproximado para cálculo de distancia
+  lat      Float?
+  lng      Float?
+
+  providerZones ProviderZone[]
+  requests      Request[]
+
+  @@index([type])
+  @@index([slug])
+}
+
+enum ZoneType {
+  BARRIO_CABA
+  PARTIDO_GBA
+}
+
+// Tabla de unión explícita Provider ↔ Zone (permite metadata futura, ej. radio)
+model ProviderZone {
+  id                String @id @default(cuid())
+  providerProfileId String
+  zoneId            String
+
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  zone            Zone            @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@unique([providerProfileId, zoneId])
+  @@index([providerProfileId])
+  @@index([zoneId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERVICIOS DEL PRESTADOR
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ProviderService {
+  id                String @id @default(cuid())
+  providerProfileId String
+  categoryId        String
+
+  title       String
+  description String?   @db.Text
+  priceFrom   Float?
+  priceTo     Float?
+  priceUnit   PriceUnit @default(POR_TRABAJO)
+  isActive    Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+  category        Category        @relation(fields: [categoryId], references: [id])
+  images          ServiceImage[]
+
+  @@index([providerProfileId])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+enum PriceUnit {
+  POR_HORA
+  POR_TRABAJO
+  POR_M2
+  A_CONVENIR
+}
+
+model ServiceImage {
+  id                String @id @default(cuid())
+  providerServiceId String
+  url               String
+  altText           String?
+  sortOrder         Int     @default(0)
+
+  providerService ProviderService @relation(fields: [providerServiceId], references: [id], onDelete: Cascade)
+
+  @@index([providerServiceId])
+}
+
+// Disponibilidad horaria del prestador
+model ProviderAvailability {
+  id                String @id @default(cuid())
+  providerProfileId String
+
+  dayOfWeek Int    // 0 = Domingo, 6 = Sábado
+  startTime String // "09:00"
+  endTime   String // "18:00"
+
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([providerProfileId, dayOfWeek])
+  @@index([providerProfileId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOLICITUDES DE PRESUPUESTO (REQUESTS)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Request {
+  id              String        @id @default(cuid())
+  clientProfileId String
+  categoryId      String
+  zoneId          String
+
+  title           String
+  description     String        @db.Text
+  status          RequestStatus @default(OPEN)
+
+  // Si el pedido está dirigido a un prestador específico (en lugar de abierto)
+  targetProviderId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime? // para pedidos abiertos que vencen
+
+  clientProfile ClientProfile @relation(fields: [clientProfileId], references: [id])
+  category      Category      @relation(fields: [categoryId], references: [id])
+  zone          Zone          @relation(fields: [zoneId], references: [id])
+
+  images       RequestImage[]
+  quotes       Quote[]
+  conversation Conversation?
+  review       Review?
+
+  @@index([clientProfileId])
+  @@index([categoryId])
+  @@index([zoneId])
+  @@index([status, createdAt])
+  @@index([targetProviderId])
+}
+
+enum RequestStatus {
+  OPEN        // publicado, esperando presupuestos
+  QUOTED      // recibió al menos un presupuesto
+  HIRED       // el cliente aceptó un presupuesto
+  IN_PROGRESS // trabajo en curso
+  COMPLETED   // trabajo finalizado (habilita reseñas)
+  CANCELLED
+  EXPIRED
+}
+
+model RequestImage {
+  id        String  @id @default(cuid())
+  requestId String
+  url       String
+  altText   String?
+
+  request Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRESUPUESTOS (QUOTES)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Quote {
+  id                String      @id @default(cuid())
+  requestId         String
+  providerProfileId String
+
+  price         Float
+  currency      String      @default("ARS")
+  estimatedDays Int?
+  comment       String?     @db.Text
+  status        QuoteStatus @default(PENDING)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime?
+
+  request         Request         @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id])
+
+  // Un prestador solo puede enviar un presupuesto por pedido
+  @@unique([requestId, providerProfileId])
+  @@index([requestId])
+  @@index([providerProfileId])
+  @@index([status])
+}
+
+enum QuoteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN // el prestador retiró su oferta
+  EXPIRED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MENSAJERÍA
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(cuid())
+  requestId String   @unique // 1-a-1 con Request
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request      Request                   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  messages     Message[]
+  participants ConversationParticipant[]
+}
+
+// Tabla de participantes: permite saber lastReadAt por usuario
+model ConversationParticipant {
+  id             String    @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  senderId       String
+
+  body          String      @db.Text
+  type          MessageType @default(TEXT)
+  attachmentUrl String? // URL en R2 si type = IMAGE
+
+  createdAt DateTime  @default(now())
+  readAt    DateTime? // null = no leído
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([senderId])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  SYSTEM // mensajes automáticos del sistema ("Presupuesto aceptado", etc.)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESEÑAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Una fila por trabajo completado. Contiene la reseña del cliente al prestador
+// Y opcionalmente la reseña del prestador al cliente.
+// Ambas se llenan en la misma fila (bidireccional dentro del registro).
+model Review {
+  id              String @id @default(cuid())
+  requestId       String @unique
+  clientProfileId String
+  providerProfileId String
+
+  // Reseña del cliente al prestador (obligatoria para completar el flujo)
+  clientRating     Int      // 1-5
+  clientComment    String?  @db.Text
+  clientReviewedAt DateTime?
+
+  // Reseña del prestador al cliente (opcional)
+  providerRating     Int?
+  providerComment    String? @db.Text
+  providerReviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request         Request         @relation(fields: [requestId], references: [id])
+  clientProfile   ClientProfile   @relation(fields: [clientProfileId], references: [id])
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id])
+
+  @@index([providerProfileId, clientReviewedAt])
+  @@index([clientProfileId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAGOS Y SUSCRIPCIONES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                String @id @default(cuid())
+  providerProfileId String
+
+  plan   Plan
+  status SubscriptionStatus
+
+  // IDs de Mercado Pago para reconciliación
+  mpPreferenceId String?
+  mpPaymentId    String?
+  mpExternalRef  String? @unique // referencia externa que enviamos a MP
+
+  amount   Float
+  currency String @default("ARS")
+
+  startsAt    DateTime
+  endsAt      DateTime
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  providerProfile ProviderProfile @relation(fields: [providerProfileId], references: [id])
+
+  @@index([providerProfileId])
+  @@index([status])
+  @@index([mpExternalRef])
+}
+
+enum SubscriptionStatus {
+  PENDING     // esperando confirmación de pago
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICACIONES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id     String           @id @default(cuid())
+  userId String
+  type   NotificationType
+
+  title   String
+  body    String
+  data    Json? // metadata extra (e.g. { requestId, quoteId })
+  readAt  DateTime?
+  emailSentAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  NEW_QUOTE            // cliente recibió un presupuesto
+  QUOTE_ACCEPTED       // prestador: su presupuesto fue aceptado
+  QUOTE_REJECTED       // prestador: su presupuesto fue rechazado
+  NEW_MESSAGE          // nuevo mensaje en una conversación
+  REQUEST_COMPLETED    // trabajo marcado como completado
+  REVIEW_RECEIVED      // alguien te dejó una reseña
+  VERIFICATION_APPROVED // admin aprobó verificación de prestador
+  SUBSCRIPTION_RENEWED
+  SUBSCRIPTION_EXPIRED
+  SUBSCRIPTION_FAILED
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Log de acciones administrativas para auditoría
+model AuditLog {
+  id         String   @id @default(cuid())
+  adminId    String   // userId del admin
+  action     String   // e.g. "VERIFY_PROVIDER", "BAN_USER", "APPROVE_REVIEW"
+  targetType String   // e.g. "ProviderProfile", "User", "Review"
+  targetId   String
+  metadata   Json?    // datos adicionales del contexto
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+// Contenido reportado por usuarios (moderación)
+model Report {
+  id         String       @id @default(cuid())
+  reporterId String       // userId que reporta
+  targetType String       // "Review" | "ProviderProfile" | "Message"
+  targetId   String
+  reason     ReportReason
+  comment    String?      @db.Text
+  status     ReportStatus @default(PENDING)
+  resolvedBy String?      // adminId
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([status])
+  @@index([reporterId])
+  @@index([targetType, targetId])
+}
+
+enum ReportReason {
+  SPAM
+  FAKE_PROFILE
+  INAPPROPRIATE_CONTENT
+  SCAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}

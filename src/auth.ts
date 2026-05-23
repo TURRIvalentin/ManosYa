@@ -143,10 +143,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const now = new Date();
         token.emailVerified = now;
         if (token.id) {
-          // Corregir DB en background — el token ya tiene el valor correcto
-          db.user
-            .update({ where: { id: token.id }, data: { emailVerified: now } })
-            .catch(() => undefined);
+          try {
+            await db.user.update({
+              where: { id: token.id },
+              data: { emailVerified: now },
+            });
+          } catch {
+            // Non-fatal: el token ya tiene emailVerified=now, la sesión es válida.
+            // El próximo trigger="update" corregirá la fila si persiste el error.
+          }
         }
       }
 

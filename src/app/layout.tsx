@@ -77,6 +77,10 @@ export const viewport: Viewport = {
   userScalable: true,
   // soporte para safe areas (notch / Dynamic Island)
   viewportFit: "cover",
+  // Con resizes-content, el layout viewport se achica cuando el teclado abre.
+  // Esto hace que position:fixed bottom-0 siempre flote POR ENCIMA del teclado
+  // en iOS Safari 16+ y Android Chrome. Sin esto, el teclado tapa el botón fijo.
+  interactiveWidget: "resizes-content",
   // Color del status bar en PWA
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#2563eb" },

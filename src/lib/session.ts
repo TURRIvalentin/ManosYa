@@ -42,15 +42,19 @@ export async function requireAdmin(): Promise<SessionUser> {
 }
 
 /**
- * Client onboarding: a clientProfile row exists.
- * No extra requirements — clients don't need CUIL or documents.
+ * Client onboarding is complete when:
+ *   1. clientProfile row exists
+ *   2. user.phone is set
  */
 export async function hasClientOnboarded(userId: string): Promise<boolean> {
-  const profile = await db.clientProfile.findUnique({
-    where: { userId },
-    select: { userId: true },
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      phone: true,
+      clientProfile: { select: { userId: true } },
+    },
   });
-  return !!profile;
+  return !!(user?.clientProfile && user.phone);
 }
 
 /**
@@ -62,8 +66,7 @@ export async function hasClientOnboarded(userId: string): Promise<boolean> {
  *
  * Documents (dniUrl, licenseUrl) are NOT required here — admin verifies
  * them asynchronously. The provider can operate (plan FREE) while pending.
- * emailVerified is enforced upstream by requireVerifiedEmail() before
- * this function is ever reached.
+ * Phone is guaranteed: user reaches provider steps only through info-basica.
  */
 export async function hasProviderOnboarded(userId: string): Promise<boolean> {
   const profile = await db.providerProfile.findUnique({
@@ -86,13 +89,92 @@ export async function hasProviderOnboarded(userId: string): Promise<boolean> {
 }
 
 /**
- * Returns true when the user has completed onboarding for at least one role.
- * Used by the home page Server Component to redirect to /onboarding when needed.
+ * Unified onboarding completion check.
+ *
+ * — Client-only (providerProfile is null): needs clientProfile + phone.
+ * — Provider or "both" (providerProfile exists): needs phone + cuil + zones + services.
+ *   Documents are optional (admin verifies async).
+ *
+ * "Both" users follow the provider path since they also created a providerProfile.
  */
 export async function hasCompletedOnboarding(userId: string): Promise<boolean> {
-  const [client, provider] = await Promise.all([
-    hasClientOnboarded(userId),
-    hasProviderOnboarded(userId),
-  ]);
-  return client || provider;
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      phone: true,
+      clientProfile: { select: { userId: true } },
+      providerProfile: {
+        select: {
+          cuil: true,
+          _count: {
+            select: {
+              zones: true,
+              services: { where: { isActive: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user?.clientProfile && !user?.providerProfile) return false;
+  if (!user?.phone) return false;
+
+  if (user.providerProfile) {
+    return !!(
+      user.providerProfile.cuil &&
+      user.providerProfile._count.zones >= 1 &&
+      user.providerProfile._count.services >= 1
+    );
+  }
+
+  return true; // client-only path: profile + phone = complete
+}
+
+export type OnboardingStep =
+  | "tipo-cuenta"
+  | "info-basica"
+  | "cuil"
+  | "zonas"
+  | "servicios"
+  | "documentos";
+
+/**
+ * Returns the next incomplete onboarding step, or null when onboarding is done.
+ * "documentos" is NOT returned here — users reach it naturally after "servicios".
+ */
+export async function getOnboardingStep(
+  userId: string,
+): Promise<Exclude<OnboardingStep, "documentos"> | null> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      phone: true,
+      clientProfile: { select: { userId: true } },
+      providerProfile: {
+        select: {
+          cuil: true,
+          _count: {
+            select: {
+              zones: true,
+              services: { where: { isActive: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!user) return null;
+  if (!user.clientProfile && !user.providerProfile) return "tipo-cuenta";
+  if (!user.phone) return "info-basica";
+
+  if (user.providerProfile) {
+    if (!user.providerProfile.cuil) return "cuil";
+    if (user.providerProfile._count.zones < 1) return "zonas";
+    if (user.providerProfile._count.services < 1) return "servicios";
+    return null; // complete (documents are optional, uploaded from profile)
+  }
+
+  return null; // client-only complete
 }

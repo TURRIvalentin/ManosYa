@@ -1,16 +1,15 @@
 "use server";
 
+import { AuthError } from "next-auth";
+import { signIn } from "@/auth";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/password";
 import { generateVerificationToken, consumeVerificationToken } from "@/lib/tokens";
 import { sendVerificationEmail, sendWelcomeEmail } from "@/lib/email";
 import { verifyTurnstile } from "@/lib/turnstile";
+import { loginSchema, registerSchema, verifyEmailSchema, resendVerificationSchema } from "@/lib/validations/auth";
 import {
-  registerSchema,
-  verifyEmailSchema,
-  resendVerificationSchema,
-} from "@/lib/validations/auth";
-import {
+  authRatelimit,
   registerRatelimit,
   emailRatelimit,
   getRateLimitIdentifier,
@@ -19,6 +18,42 @@ import {
 export type ActionResult<T = void> =
   | { ok: true; data: T }
   | { ok: false; error: string; field?: string };
+
+export async function loginAction(_prev: unknown, formData: FormData): Promise<ActionResult> {
+  const ip = await getRateLimitIdentifier();
+  const rl = await authRatelimit.limit(ip);
+  if (!rl.success) {
+    return { ok: false, error: "Demasiados intentos. Esperá 10 minutos e intentá de nuevo." };
+  }
+
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) {
+    return { ok: false, error: "Revisá los datos ingresados." };
+  }
+
+  try {
+    await signIn("credentials", {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      redirectTo: "/",
+    });
+  } catch (err) {
+    // signIn lanza NEXT_REDIRECT en éxito y cuando signIn callback retorna URL
+    // (email no verificado → redirect a /auth/verify-email). Ambos deben propagarse.
+    if (err instanceof AuthError) {
+      if (err.type === "CredentialsSignin") {
+        return { ok: false, error: "Email o contraseña incorrectos. Verificá tus datos." };
+      }
+      return { ok: false, error: "Ocurrió un error al iniciar sesión. Intentá de nuevo." };
+    }
+    throw err; // re-throw redirect errors
+  }
+
+  return { ok: true, data: undefined };
+}
 
 export async function registerAction(formData: FormData): Promise<ActionResult> {
   const ip = await getRateLimitIdentifier();
@@ -94,8 +129,12 @@ export async function verifyEmailAction(formData: FormData): Promise<ActionResul
     select: { name: true },
   });
 
-  // Fire-and-forget welcome email — verification already succeeded
-  sendWelcomeEmail(email, user.name ?? "").catch(() => undefined);
+  // Welcome email is best-effort — verification already succeeded
+  try {
+    await sendWelcomeEmail(email, user.name ?? "");
+  } catch {
+    // Non-fatal: user is verified, they just won't get the welcome email
+  }
 
   return { ok: true, data: undefined };
 }

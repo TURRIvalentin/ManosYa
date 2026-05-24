@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import { RegisterForm } from "@/components/auth/RegisterForm";
 
-export const metadata: Metadata = { title: "Registrarse" };
+export const metadata: Metadata = { title: "Crear cuenta" };
 
-// Placeholder — Fase 1
 export default function RegisterPage() {
-  return <div className="py-8 text-center text-muted-foreground">📝 Registro — Fase 1</div>;
+  return <RegisterForm />;
 }

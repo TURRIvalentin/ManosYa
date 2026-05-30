@@ -46,7 +46,7 @@ export function DocumentUploadStep({
   }
 
   function clearFile(
-    setPreview: (p: FilePreview | null) => void,
+    setPreview: React.Dispatch<React.SetStateAction<FilePreview | null>>,
     inputRef: React.RefObject<HTMLInputElement>,
   ) {
     setPreview((prev) => {

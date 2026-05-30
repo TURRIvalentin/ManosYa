@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { authConfig } from "./auth.config";
-import { authRatelimit } from "@/lib/rate-limit";
+import { authRatelimit } from "@/lib/rate-limit-edge";
 import type { Session } from "next-auth";
 
 const { auth } = NextAuth(authConfig);
@@ -9,7 +9,7 @@ const { auth } = NextAuth(authConfig);
 // Routes that require an authenticated session
 const PROTECTED = ["/pedidos", "/mensajes", "/perfil", "/onboarding"];
 // Routes only for unauthenticated users (redirect away if session exists)
-const AUTH_ONLY = ["/auth/login", "/auth/register"];
+const AUTH_ONLY = ["/login", "/register"];
 
 export default auth(async function middleware(
   request: NextRequest & { auth: Session | null },
@@ -46,7 +46,7 @@ export default auth(async function middleware(
   // Guard admin routes
   if (pathname.startsWith("/admin")) {
     if (!session) {
-      const url = new URL("/auth/login", request.url);
+      const url = new URL("/login", request.url);
       url.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(url);
     }
@@ -57,7 +57,7 @@ export default auth(async function middleware(
 
   // Guard protected routes
   if (!session && PROTECTED.some((r) => pathname.startsWith(r))) {
-    const url = new URL("/auth/login", request.url);
+    const url = new URL("/login", request.url);
     url.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(url);
   }

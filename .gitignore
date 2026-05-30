@@ -23,6 +23,7 @@ prisma/migrations/**/migration.lock
 coverage/
 playwright-report/
 test-results/
+.playwright/
 
 # Misc
 .DS_Store

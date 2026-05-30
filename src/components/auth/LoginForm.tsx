@@ -44,7 +44,7 @@ export function LoginForm() {
         <p className="text-sm text-muted-foreground">
           ¿No tenés cuenta?{" "}
           <Link
-            href="/auth/register"
+            href="/register"
             className="font-medium text-brand-600 underline-offset-4 hover:underline"
           >
             Registrate gratis
@@ -150,7 +150,7 @@ export function LoginForm() {
 
         <div className="flex justify-end">
           <Link
-            href="/auth/forgot-password"
+            href="/forgot-password"
             className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           >
             Olvidé mi contraseña

@@ -13,31 +13,31 @@ const ERROR_MESSAGES: Record<string, { title: string; body: string; cta?: string
     title: "Esta cuenta usa contraseña",
     body: "Este email ya tiene una cuenta creada con email y contraseña. Ingresá con tus datos de siempre. Si querés vincular Google, podés hacerlo después desde Perfil > Seguridad.",
     cta: "Ingresar con contraseña",
-    ctaHref: "/auth/login",
+    ctaHref: "/login",
   },
   OAuthEmailNotVerified: {
     title: "Email no verificado",
     body: "Google indicó que este email no está verificado. No podemos crear una cuenta hasta que lo sea.",
     cta: "Volver al ingreso",
-    ctaHref: "/auth/login",
+    ctaHref: "/login",
   },
   OAuthSignin: {
     title: "Error al conectar con Google",
     body: "No pudimos conectarnos con Google. Intentá de nuevo o ingresá con email y contraseña.",
     cta: "Intentar de nuevo",
-    ctaHref: "/auth/login",
+    ctaHref: "/login",
   },
   OAuthCallback: {
     title: "Error en la respuesta de Google",
     body: "Ocurrió un error durante el proceso de autenticación. Esto puede ser temporal — intentá de nuevo.",
     cta: "Intentar de nuevo",
-    ctaHref: "/auth/login",
+    ctaHref: "/login",
   },
   SessionRequired: {
     title: "Necesitás ingresar",
     body: "Esta página requiere que hayas iniciado sesión.",
     cta: "Ingresar",
-    ctaHref: "/auth/login",
+    ctaHref: "/login",
   },
 };
 

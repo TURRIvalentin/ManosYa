@@ -32,11 +32,11 @@ export function VerifyEmailClient({ token, email }: VerifyEmailClientProps) {
     const formData = new FormData();
     formData.set("token", token);
     formData.set("email", email);
-    verifyEmailAction(formData).then((result) => {
+    void verifyEmailAction(formData).then((result) => {
       if (result.ok) {
         setStatus("success");
         // Redirect to login after 3s so user can see the success state
-        setTimeout(() => router.push("/auth/login?verified=1"), 3000);
+        setTimeout(() => router.push("/login?verified=1"), 3000);
       } else {
         setStatus("error");
         setErrorMsg(result.error);
@@ -81,7 +81,7 @@ export function VerifyEmailClient({ token, email }: VerifyEmailClientProps) {
           Tu cuenta está activa. Te redirigimos al ingreso…
         </p>
         <Link
-          href="/auth/login"
+          href="/login"
           className="mt-2 text-sm font-medium text-brand-600 underline-offset-4 hover:underline"
         >
           Ir a ingresar ahora
@@ -114,7 +114,7 @@ export function VerifyEmailClient({ token, email }: VerifyEmailClientProps) {
         <p className="text-center text-sm text-muted-foreground">
           ¿Recordás la contraseña?{" "}
           <Link
-            href="/auth/login"
+            href="/login"
             className="font-medium text-brand-600 underline-offset-4 hover:underline"
           >
             Intentá ingresar
@@ -135,7 +135,7 @@ export function VerifyEmailClient({ token, email }: VerifyEmailClientProps) {
           Revisá también la carpeta de spam.
         </p>
         <Link
-          href="/auth/login"
+          href="/login"
           className="text-sm font-medium text-brand-600 underline-offset-4 hover:underline"
         >
           Volver al ingreso
@@ -144,7 +144,7 @@ export function VerifyEmailClient({ token, email }: VerifyEmailClientProps) {
     );
   }
 
-  // ── Estado idle — llegaron sin token (desde /auth/login?unverified=...) ───
+  // ── Estado idle — llegaron sin token (desde /login?unverified=...) ───
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
@@ -179,7 +179,7 @@ export function VerifyEmailClient({ token, email }: VerifyEmailClientProps) {
 
       <p className="text-center text-sm text-muted-foreground">
         <Link
-          href="/auth/login"
+          href="/login"
           className="font-medium text-brand-600 underline-offset-4 hover:underline"
         >
           Volver al ingreso

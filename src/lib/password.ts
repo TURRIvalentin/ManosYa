@@ -1,9 +1,10 @@
-import { hash, verify, Algorithm } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
+import type { Algorithm } from "@node-rs/argon2";
 
 // Parámetros Argon2id según OWASP Password Storage Cheat Sheet 2024:
 // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 const ARGON2_OPTIONS = {
-  algorithm: Algorithm.Argon2id,
+  algorithm: 2 as Algorithm, // Algorithm.Argon2id = 2
   memoryCost: 19456, // 19 MiB
   timeCost: 2,
   parallelism: 1,

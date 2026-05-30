@@ -1,47 +1,89 @@
 "use client";
 
-import { useEffect } from "react";
-import { ShieldCheck } from "lucide-react";
+import { useEffect, useRef } from "react";
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "error-callback"?: () => void;
+          "expired-callback"?: () => void;
+          theme?: "light" | "dark" | "auto";
+        },
+      ) => string;
+      reset: (widgetId: string) => void;
+      remove: (widgetId: string) => void;
+    };
+    onTurnstileLoad?: () => void;
+  }
+}
 
 interface TurnstileWidgetProps {
   onTokenChange: (token: string) => void;
 }
 
-/**
- * Wrapper de Cloudflare Turnstile.
- *
- * Dev (sin NEXT_PUBLIC_TURNSTILE_SITE_KEY): auto-completa con "dev-bypass-token".
- * El server-side verifyTurnstile() lo acepta cuando NODE_ENV !== "production".
- *
- * Prod: renderiza el widget real de @marsidev/react-turnstile.
- * TODO: instalar @marsidev/react-turnstile y descomentar la importación real.
- */
 export function TurnstileWidget({ onTokenChange }: TurnstileWidgetProps) {
   const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetIdRef = useRef<string | null>(null);
+  // Ref so the Turnstile callback always has the latest handler without re-rendering
+  const onTokenChangeRef = useRef(onTokenChange);
+  onTokenChangeRef.current = onTokenChange;
 
-  // Dev bypass: setear el token inmediatamente sin ningún widget
+  // Dev bypass: fire token immediately, render nothing
   useEffect(() => {
     if (!siteKey) {
-      onTokenChange("dev-bypass-token");
+      onTokenChangeRef.current("dev-bypass-token");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!siteKey) {
-    return null; // sin widget visible en dev
-  }
+  useEffect(() => {
+    if (!siteKey || !containerRef.current) return;
 
-  // Production widget — activar cuando se instale @marsidev/react-turnstile:
-  // import { Turnstile } from "@marsidev/react-turnstile";
-  // return <Turnstile siteKey={siteKey} onSuccess={onTokenChange} />;
+    const render = () => {
+      if (!containerRef.current || !window.turnstile) return;
+      // Guard against React StrictMode double-invocation
+      if (widgetIdRef.current) return;
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        callback: (token: string) => onTokenChangeRef.current(token),
+        "expired-callback": () => onTokenChangeRef.current(""),
+        theme: "light",
+      });
+    };
 
-  return (
-    <div
-      role="status"
-      className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground"
-    >
-      <ShieldCheck className="h-4 w-4 shrink-0 text-brand-600" aria-hidden="true" />
-      Verificación de seguridad
-    </div>
-  );
+    if (window.turnstile) {
+      // Script already loaded (e.g. navigating back to this page)
+      render();
+    } else if (!document.querySelector('script[src*="challenges.cloudflare.com/turnstile"]')) {
+      // First load: inject script and register onload callback
+      window.onTurnstileLoad = render;
+      const script = document.createElement("script");
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad&render=explicit";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    } else {
+      // Script is still loading (e.g. HMR re-mount) — just update the callback
+      window.onTurnstileLoad = render;
+    }
+
+    return () => {
+      if (widgetIdRef.current && window.turnstile) {
+        window.turnstile.remove(widgetIdRef.current);
+        widgetIdRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteKey]);
+
+  if (!siteKey) return null;
+
+  return <div ref={containerRef} />;
 }

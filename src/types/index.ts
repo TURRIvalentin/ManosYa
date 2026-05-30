@@ -10,7 +10,6 @@ import type {
   Zone,
   Request,
   Quote,
-  Review,
   Message,
   Conversation,
   Plan,

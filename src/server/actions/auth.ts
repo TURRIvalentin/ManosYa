@@ -20,7 +20,7 @@ export type ActionResult<T = void> =
   | { ok: false; error: string; field?: string };
 
 export async function loginAction(_prev: unknown, formData: FormData): Promise<ActionResult> {
-  const ip = await getRateLimitIdentifier();
+  const ip = getRateLimitIdentifier();
   const rl = await authRatelimit.limit(ip);
   if (!rl.success) {
     return { ok: false, error: "Demasiados intentos. Esperá 10 minutos e intentá de nuevo." };
@@ -56,7 +56,7 @@ export async function loginAction(_prev: unknown, formData: FormData): Promise<A
 }
 
 export async function registerAction(formData: FormData): Promise<ActionResult> {
-  const ip = await getRateLimitIdentifier();
+  const ip = getRateLimitIdentifier();
   const rl = await registerRatelimit.limit(ip);
   if (!rl.success) {
     return { ok: false, error: "Demasiados intentos. Intentá de nuevo en 1 hora." };
@@ -140,7 +140,7 @@ export async function verifyEmailAction(formData: FormData): Promise<ActionResul
 }
 
 export async function resendVerificationAction(formData: FormData): Promise<ActionResult> {
-  const ip = await getRateLimitIdentifier();
+  const ip = getRateLimitIdentifier();
   const rl = await emailRatelimit.limit(ip);
   if (!rl.success) {
     return { ok: false, error: "Demasiados intentos. Intentá de nuevo en 1 hora." };

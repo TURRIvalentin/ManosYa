@@ -64,7 +64,7 @@ export function RegisterForm() {
         <p className="text-xs text-muted-foreground">
           ¿No llegó? Revisá la carpeta de spam o{" "}
           <Link
-            href="/auth/verify-email"
+            href="/verify-email"
             className="font-medium text-brand-600 underline-offset-4 hover:underline"
           >
             solicitá otro link
@@ -83,7 +83,7 @@ export function RegisterForm() {
         <p className="text-sm text-muted-foreground">
           ¿Ya tenés cuenta?{" "}
           <Link
-            href="/auth/login"
+            href="/login"
             className="font-medium text-brand-600 underline-offset-4 hover:underline"
           >
             Ingresá

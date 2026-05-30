@@ -92,7 +92,7 @@ export default async function OnboardingStepPage({ params }: Props) {
         }),
       ]);
       if (!profile) redirect("/onboarding");
-      const selectedIds = profile.zones.map((z) => z.zoneId);
+      const selectedIds = profile.zones.map((z: { zoneId: string }) => z.zoneId);
       return <ProviderZonesStep zones={zones} selectedIds={selectedIds} />;
     }
 

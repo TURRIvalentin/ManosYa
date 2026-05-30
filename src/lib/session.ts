@@ -15,13 +15,13 @@ export type SessionUser = {
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const session = await auth();
   if (!session?.user?.id) return null;
-  return session.user as SessionUser;
+  return session.user;
 }
 
 // Redirects to /auth/login if no active session.
 export async function requireAuth(): Promise<SessionUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/auth/login");
+  if (!user) redirect("/login");
   return user;
 }
 
@@ -29,7 +29,7 @@ export async function requireAuth(): Promise<SessionUser> {
 export async function requireVerifiedEmail(): Promise<SessionUser> {
   const user = await requireAuth();
   if (!user.emailVerified) {
-    redirect(`/auth/verify-email?unverified=${encodeURIComponent(user.email)}`);
+    redirect(`/verify-email?unverified=${encodeURIComponent(user.email)}`);
   }
   return user;
 }
@@ -91,11 +91,11 @@ export async function hasProviderOnboarded(userId: string): Promise<boolean> {
 /**
  * Unified onboarding completion check.
  *
- * — Client-only (providerProfile is null): needs clientProfile + phone.
- * — Provider or "both" (providerProfile exists): needs phone + cuil + zones + services.
- *   Documents are optional (admin verifies async).
+ * — Client or "both" (clientProfile exists): needs clientProfile + phone. Done.
+ * — Provider-only (providerProfile exists, no clientProfile): needs phone + cuil + zones + services.
  *
- * "Both" users follow the provider path since they also created a providerProfile.
+ * "Both" users complete onboarding via the client path (2 steps).
+ * Provider-specific setup for BOTH users is gated later by isProviderReady().
  */
 export async function hasCompletedOnboarding(userId: string): Promise<boolean> {
   const user = await db.user.findUnique({
@@ -120,15 +120,35 @@ export async function hasCompletedOnboarding(userId: string): Promise<boolean> {
   if (!user?.clientProfile && !user?.providerProfile) return false;
   if (!user?.phone) return false;
 
-  if (user.providerProfile) {
-    return !!(
-      user.providerProfile.cuil &&
-      user.providerProfile._count.zones >= 1 &&
-      user.providerProfile._count.services >= 1
-    );
-  }
+  // Client or BOTH: clientProfile + phone is sufficient to enter the app.
+  if (user.clientProfile) return true;
 
-  return true; // client-only path: profile + phone = complete
+  // Provider-only path: full provider setup required.
+  return !!(
+    user.providerProfile?.cuil &&
+    user.providerProfile._count.zones >= 1 &&
+    user.providerProfile._count.services >= 1
+  );
+}
+
+/**
+ * Returns true when a provider's profile is fully configured (cuil + zones + services).
+ * Use this to gate provider-specific features for BOTH users who skipped provider setup.
+ */
+export async function isProviderReady(userId: string): Promise<boolean> {
+  const profile = await db.providerProfile.findUnique({
+    where: { userId },
+    select: {
+      cuil: true,
+      _count: {
+        select: {
+          zones: true,
+          services: { where: { isActive: true } },
+        },
+      },
+    },
+  });
+  return !!(profile?.cuil && profile._count.zones >= 1 && profile._count.services >= 1);
 }
 
 export type OnboardingStep =
@@ -169,12 +189,12 @@ export async function getOnboardingStep(
   if (!user.clientProfile && !user.providerProfile) return "tipo-cuenta";
   if (!user.phone) return "info-basica";
 
-  if (user.providerProfile) {
-    if (!user.providerProfile.cuil) return "cuil";
-    if (user.providerProfile._count.zones < 1) return "zonas";
-    if (user.providerProfile._count.services < 1) return "servicios";
-    return null; // complete (documents are optional, uploaded from profile)
-  }
+  // Client or BOTH: phone + clientProfile = onboarding complete.
+  if (user.clientProfile) return null;
 
-  return null; // client-only complete
+  // Provider-only: continue through provider-specific steps.
+  if (!user.providerProfile?.cuil) return "cuil";
+  if (user.providerProfile._count.zones < 1) return "zonas";
+  if (user.providerProfile._count.services < 1) return "servicios";
+  return null;
 }

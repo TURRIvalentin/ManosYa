@@ -11,12 +11,16 @@ export default async function OnboardingLayout({
 }) {
   const user = await requireVerifiedEmail();
 
-  const providerProfile = await db.providerProfile.findUnique({
-    where: { userId: user.id },
-    select: { id: true },
+  const profiles = await db.user.findUnique({
+    where: { id: user.id },
+    select: {
+      clientProfile: { select: { userId: true } },
+      providerProfile: { select: { id: true } },
+    },
   });
 
-  const isProvider = !!providerProfile;
+  // BOTH users have both profiles → show 2-step client bar, not 6-step provider bar.
+  const isProvider = !!profiles?.providerProfile && !profiles?.clientProfile;
 
   return (
     <div className="flex min-h-screen flex-col">

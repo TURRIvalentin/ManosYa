@@ -35,8 +35,8 @@ export const emailRatelimit = new Ratelimit({
 });
 
 // Obtener identificador de rate limiting: preferir IP forwarded de Vercel/Cloudflare
-export async function getRateLimitIdentifier(): Promise<string> {
-  const headersList = await headers();
+export function getRateLimitIdentifier(): string {
+  const headersList = headers();
   // Vercel pone la IP real en x-forwarded-for (primer elemento)
   const forwarded = headersList.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0]?.trim() ?? "anonymous";

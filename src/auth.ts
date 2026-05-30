@@ -5,8 +5,6 @@ import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
-import type { UserRole } from "@prisma/client";
-import type { JWT } from "next-auth/jwt";
 
 import { authConfig } from "./auth.config";
 import { db } from "@/lib/db";
@@ -101,7 +99,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Perfil > Seguridad vincula la cuenta OAuth con un botón explícito.
           // Ver docs/auth.md § "Conflicto de providers".
           if (dbUser?.passwordHash) {
-            return `/auth/error?code=OAuthAccountConflict&provider=${account.provider}`;
+            // account puede ser undefined si llegamos aquí desde credentials
+            // (account?.provider !== "credentials" es true cuando account === null/undefined).
+            return `/error?code=OAuthAccountConflict&provider=${account?.provider ?? "unknown"}`;
           }
         }
         return true;
@@ -112,7 +112,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // evitando el error genérico "CredentialsSignin".
       const emailVerified = (user as { emailVerified: Date | null }).emailVerified;
       if (!emailVerified) {
-        return `/auth/verify-email?unverified=${encodeURIComponent(user.email ?? "")}`;
+        return `/verify-email?unverified=${encodeURIComponent(user.email ?? "")}`;
       }
 
       return true;
@@ -121,11 +121,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // jwt: extiende el callback de authConfig con la consulta DB en "update".
     async jwt(params) {
       // Ejecutar el callback base (mapea campos del user al token)
-      const token = authConfig.callbacks!.jwt!(params) as JWT & {
-        id: string;
-        role: UserRole;
-        emailVerified: Date | null;
-      };
+      const token = authConfig.callbacks.jwt(params);
 
       // BUG KNOWN en Auth.js v5 (handle-login.ts:279):
       //   createUser({ ...profile, emailVerified: null })
@@ -174,7 +170,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     // session: re-usa el callback base (ya mapea id, role, emailVerified)
-    session: authConfig.callbacks!.session!,
+    session: (p) => authConfig.callbacks.session(p),
   },
 
   events: {

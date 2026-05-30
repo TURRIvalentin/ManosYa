@@ -1,7 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  // Permitir imágenes desde los dominios de storage
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   images: {
     remotePatterns: [
       {
@@ -53,10 +51,10 @@ const nextConfig: NextConfig = {
     ];
   },
 
+  // Native addons (.node binaries) no pueden ser bundleados por webpack.
+  // En Next.js 14 se llama serverComponentsExternalPackages (en 15+ es serverExternalPackages).
   experimental: {
-    // Server Actions habilitado por defecto en Next.js 14
-    // typedRoutes ayuda a detectar rutas inválidas en tiempo de compilación
-    typedRoutes: true,
+    serverComponentsExternalPackages: ["@node-rs/argon2", "sharp"],
   },
 };
 

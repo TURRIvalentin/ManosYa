@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CalendarClock, CheckCircle2, Inbox, MapPin, Send } from "lucide-react";
 
@@ -64,12 +65,12 @@ function RequestCard({
       </div>
 
       <div className="mt-4 flex justify-stretch md:justify-end">
-        <span
-          aria-disabled="true"
-          className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-border bg-muted px-4 text-sm font-semibold text-muted-foreground md:w-auto"
+        <Link
+          className="btn-tap inline-flex w-full items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold text-foreground transition hover:bg-muted md:w-auto"
+          href={`/pedidos/${item.id}`}
         >
-          Detalle proximamente
-        </span>
+          Ver detalle
+        </Link>
       </div>
     </article>
   );

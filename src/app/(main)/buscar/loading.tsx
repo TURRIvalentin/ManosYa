@@ -31,11 +31,21 @@ export default function BuscarLoading() {
           <div className="skeleton h-4 w-28 rounded" />
           <div className="skeleton h-8 w-full max-w-md rounded" />
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_180px_auto]">
+        <div className="mt-4 grid grid-cols-[1fr_auto] gap-2 md:hidden">
+          <div className="skeleton h-11 rounded-lg" />
+          <div className="skeleton h-11 w-12 rounded-lg" />
+        </div>
+        <div className="mt-3 md:hidden">
+          <div className="skeleton h-11 rounded-lg" />
+        </div>
+        <div className="mt-4 hidden gap-3 md:grid md:grid-cols-4 xl:grid-cols-[minmax(220px,1fr)_150px_150px_130px_170px_150px_auto]">
           <div className="skeleton h-11 rounded-lg" />
           <div className="skeleton h-11 rounded-lg" />
           <div className="skeleton h-11 rounded-lg" />
-          <div className="skeleton h-11 rounded-lg md:w-24" />
+          <div className="skeleton h-11 rounded-lg" />
+          <div className="skeleton h-11 rounded-lg" />
+          <div className="skeleton h-11 rounded-lg" />
+          <div className="skeleton h-11 rounded-lg" />
         </div>
       </div>
       <div className="mt-4 flex gap-2">

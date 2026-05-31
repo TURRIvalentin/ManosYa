@@ -27,6 +27,7 @@ model User {
   passwordHash  String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
   // Soft delete: el usuario "borrado" se anonimiza después de 30 días (Ley 25.326)
   deletedAt     DateTime?
 

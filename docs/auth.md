@@ -117,9 +117,47 @@ La respuesta 429 incluye `Retry-After` en segundos calculado desde `rl.reset`.
 - `resendVerificationAction`: siempre responde `ok: true` independientemente de si el email existe.
 - `authorize()`: no distingue entre "usuario no existe" y "contraseña incorrecta" — ambos retornan `null`.
 
-## Soft delete
+## Soft delete y re-registro
 
 Los usuarios eliminados (`deletedAt !== null`) son denegados en todos los flows:
 - `authorize()`: `if (user.deletedAt) return null`
 - `signIn` callback OAuth: `if (dbUser?.deletedAt) return false`
 - `jwt` callback trigger="update": no actualiza tokens de usuarios eliminados
+
+### Decisión: anonimización de email en el momento del soft-delete
+
+`User.email` tiene `@unique` sin índice parcial (Prisma no soporta partial unique indexes
+nativamente en PostgreSQL sin SQL raw). Si solo se seteara `deletedAt`, un `db.user.create`
+con el mismo email fallaría con un Prisma unique constraint violation.
+
+**Solución adoptada en `deleteAccountAction`:**
+1. `email` → `deleted-${userId}@deleted.invalid` (TLD `.invalid` reservado por RFC 2606, nunca resuelve)
+2. `name` → `"[Cuenta eliminada]"`
+3. `image`, `phone`, `passwordHash` → `null`
+4. Registros `Account` (OAuth) eliminados en la misma transacción
+
+**Consecuencias:**
+- El email original queda libre inmediatamente → **re-registro permitido** con el mismo email
+- El mismo Google account puede vincularse a la nueva cuenta (Account eliminado libera el provider+providerAccountId)
+- El `User.id` persiste → integridad referencial con pedidos, reseñas y mensajes históricos
+- Los datos personales se borran per Ley 25.326 (datos personales argentinos)
+
+**Lo que NO sucede:**
+- No hay recuperación de cuenta eliminada (decisión irrevocable)
+- Los pedidos y reseñas históricas quedan con `userId` del usuario eliminado (necesario para integridad de reviews del prestador)
+
+## Refresco de campos en JWT mid-session (trigger "update")
+
+El JWT se firma al momento del login y no se actualiza automáticamente. Para propagar
+cambios (nombre, imagen, rol, re-verificación de email) sin obligar al usuario a re-loguear:
+
+```typescript
+// Client Component
+const { update } = useSession();
+await serverAction(); // e.g., updateProfileDataAction
+await update();       // dispara jwt callback con trigger: "update"
+```
+
+El callback `jwt` en `auth.ts` con `trigger === "update"` hace un `db.user.findUnique`
+y sobreescribe `token.role`, `token.emailVerified`, `token.name` y `token.picture`
+con los valores actuales de la DB.

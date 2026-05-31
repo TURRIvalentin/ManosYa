@@ -151,18 +151,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
 
-      // En trigger "update" (e.g. cliente llama session.update() tras cambio de rol)
-      // refrescar role y emailVerified desde la DB para reflejar cambios inmediatos.
+      // En trigger "update" (e.g. session.update() tras cambiar nombre, rol, emailVerified)
+      // refrescar todos los campos mutables desde la DB para reflejar cambios mid-session.
       if (params.trigger === "update" && token.id) {
         const dbUser = await db.user.findUnique({
           where: { id: token.id },
-          select: { role: true, emailVerified: true, deletedAt: true },
+          select: { role: true, emailVerified: true, deletedAt: true, name: true, image: true },
         });
         // Si el usuario fue soft-deleted, mantener el token como está;
         // el middleware lo invalidará al verificar emailVerified o rol.
         if (dbUser && !dbUser.deletedAt) {
           token.role = dbUser.role;
           token.emailVerified = dbUser.emailVerified;
+          token.name = dbUser.name;
+          token.picture = dbUser.image; // Auth.js mapea token.picture → session.user.image
         }
       }
 
@@ -174,8 +176,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 
   events: {
-    // Para futuros: enviar a Sentry/monitoring
     async signIn({ user, account, isNewUser }) {
+      // Registrar timestamp del último login para mostrar en /perfil
+      if (user.id) {
+        db.user
+          .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+          .catch(() => {}); // Non-fatal: el login no debe romperse por esto
+      }
+
       if (isNewUser && account?.provider === "google") {
         // Nuevo usuario via Google: crear ClientProfile vacío por default.
         // El onboarding le pedirá que elija su tipo de cuenta.

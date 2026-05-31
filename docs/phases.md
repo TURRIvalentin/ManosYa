@@ -40,6 +40,27 @@ Cada fase termina con un criterio verificable. No se avanza a la siguiente sin e
 
 ## Fase 2 — Catálogo y búsqueda
 
+### Fase 2A — /perfil CRUD ✅ COMPLETA (2026-05-31)
+
+**Features entregadas:**
+- `/perfil` landing con avatar, miembro desde, último acceso, banner prestador incompleto con CTA inteligente
+- `/perfil/datos` — editar nombre/teléfono (con session refresh via window.location.reload), cambio de contraseña, bio/CUIL del prestador
+- `/perfil/servicios` — CRUD completo: agregar, editar inline expandible, toggle activo/inactivo, eliminar con confirmación. Anti-IDOR en todas las mutaciones
+- `/perfil/zonas` — chip selector editable, replace-all al guardar
+- `/perfil/documentos` — upload DNI/matrícula con dev bypass de R2 (isInvalid detecta "placeholder")
+- `/perfil/eliminar-cuenta` — soft delete: email anonimizado, Account OAuth liberado, re-registro permitido
+- Seed de 20 categorías + 48 barrios CABA + 24 partidos GBA (idempotente)
+- `USE_R2_MOCK` + detección de valores placeholder para bypass de R2 en dev
+- `lastLoginAt` en schema de User, actualizado en events.signIn
+- JWT trigger="update" refresca name, image, role, emailVerified mid-session
+
+**Pendiente:**
+- [ ] Subir cambios a GitHub remoto
+
+---
+
+## Fase 2B + 2C — Catálogo y búsqueda
+
 **Objetivo:** Un cliente puede buscar prestadores por categoría + zona y ver su perfil.
 
 **Features:**

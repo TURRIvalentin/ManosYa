@@ -58,7 +58,7 @@ export default auth(async function middleware(
   // Guard protected routes
   if (!session && PROTECTED.some((r) => pathname.startsWith(r))) {
     const url = new URL("/login", request.url);
-    url.searchParams.set("callbackUrl", pathname);
+    url.searchParams.set("callbackUrl", `${pathname}${request.nextUrl.search}`);
     return NextResponse.redirect(url);
   }
 

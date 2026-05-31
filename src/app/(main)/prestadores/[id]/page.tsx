@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, CalendarClock, MapPin, Star } from "lucide-react";
 
@@ -126,13 +127,22 @@ export default async function ProviderPage({ params }: ProviderPageProps) {
             </div>
           </div>
 
-          <button
-            disabled
-            className="btn-tap inline-flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-muted px-4 text-sm font-semibold text-muted-foreground md:w-auto md:min-w-[220px]"
-            type="button"
-          >
-            Pedir presupuesto próximamente
-          </button>
+          {provider.services.length > 0 ? (
+            <Link
+              className="btn-tap inline-flex w-full items-center justify-center rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white transition hover:bg-brand-700 md:w-auto md:min-w-[220px]"
+              href={`/pedidos/nuevo?providerId=${provider.id}`}
+            >
+              Pedir presupuesto
+            </Link>
+          ) : (
+            <button
+              disabled
+              className="btn-tap inline-flex w-full cursor-not-allowed items-center justify-center rounded-lg bg-muted px-4 text-sm font-semibold text-muted-foreground md:w-auto md:min-w-[220px]"
+              type="button"
+            >
+              Pedir presupuesto próximamente
+            </button>
+          )}
         </div>
 
         {provider.bio && (

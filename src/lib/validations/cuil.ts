@@ -13,11 +13,12 @@ const COEFFICIENTS = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2] as const;
  * Algoritmo oficial ANSES:
  *   1. Multiplicar cada uno de los 10 primeros dígitos por su coeficiente.
  *   2. Sumar los productos.
- *   3. remainder = suma % 11
- *   4. remainder == 0  → verificador = 0
- *      remainder == 1  → para prefijo 27 el verificador convencional es 9;
- *                        para otros prefijos la combinación es inválida.
- *      remainder >= 2  → verificador = 11 - remainder
+ *   3. resto = suma % 11
+ *   4. digito = 11 - resto
+ *      digito == 11 → verificador = 0
+ *      digito == 10 → para prefijo 27 el verificador convencional es 9;
+ *                      para otros prefijos la combinación es inválida.
+ *      en otros casos, verificador = digito
  *   5. El dígito 11 del CUIL debe coincidir con el verificador calculado.
  */
 function checkDigitIsValid(digits: string): boolean {
@@ -27,15 +28,16 @@ function checkDigitIsValid(digits: string): boolean {
   );
 
   const remainder = sum % 11;
+  const verifier = 11 - remainder;
   let expected: number;
 
-  if (remainder === 0) {
+  if (verifier === 11) {
     expected = 0;
-  } else if (remainder === 1) {
-    // Prefijo 27 (mujeres con combinaciones especiales): verificador convencional 9
+  } else if (verifier === 10) {
+    // Prefijo 27 (mujeres con combinaciones especiales): verificador convencional 9.
     expected = digits.startsWith("27") ? 9 : NaN;
   } else {
-    expected = 11 - remainder;
+    expected = verifier;
   }
 
   return Number(digits[10]) === expected;

@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { isValidCUIL, formatCUIL, normalizeCUIL, cuilSchema } from "@/lib/validations/cuil";
 
-// Known-good CUILs (generated with the official ANSES algorithm)
+// Known-good CUIL/CUITs generated with the standard verifier algorithm.
 const VALID_CUILS = [
-  "20-12345678-9", // male prefix 20, remainder → verifier 9
+  "20-12345678-6",
   "23-25234563-9",
-  "27-26824265-9", // female prefix 27, remainder 1 edge case (verifier = 9)
-  "30-68930047-6", // legal entity prefix 30
-  "20123456789",   // no dashes — still valid
+  "27-26824265-7",
+  "27-10000002-9", // prefix 27 special case: computed verifier 10 maps to 9
+  "30-68930047-9",
+  "20123456786", // no dashes - still valid
 ];
 
 const INVALID_CUILS = [
@@ -22,8 +23,8 @@ const INVALID_CUILS = [
 
 describe("isValidCUIL", () => {
   it("accepts known-valid CUILs", () => {
-    expect(isValidCUIL("20123456789")).toBe(true);
-    expect(isValidCUIL("30-68930047-6")).toBe(true);
+    expect(isValidCUIL("20123456786")).toBe(true);
+    expect(isValidCUIL("30-68930047-9")).toBe(true);
   });
 
   it("rejects CUILs with invalid prefix", () => {
@@ -41,25 +42,29 @@ describe("isValidCUIL", () => {
     expect(isValidCUIL("")).toBe(false);
   });
 
-  it("handles the prefix-27 / remainder-1 edge case (verifier = 9)", () => {
-    // For prefix 27, when the algorithm yields remainder=1, verifier should be 9
-    expect(isValidCUIL("27-26824265-9")).toBe(true);
+  it("handles the prefix-27 special case where computed verifier 10 maps to 9", () => {
+    expect(isValidCUIL("27-10000002-9")).toBe(true);
   });
 
   it("strips dashes and spaces before validating", () => {
-    expect(isValidCUIL("20 12345678 9")).toBe(true);
-    expect(isValidCUIL("20-12345678-9")).toBe(true);
+    expect(isValidCUIL("20 12345678 6")).toBe(true);
+    expect(isValidCUIL("20-12345678-6")).toBe(true);
+  });
+
+  it("rejects non-numeric characters", () => {
+    expect(isValidCUIL("20-1234A678-6")).toBe(false);
+    expect(isValidCUIL("abcdefghijk")).toBe(false);
   });
 });
 
 describe("formatCUIL", () => {
   it("formats 11-digit string as XX-XXXXXXXX-X", () => {
-    expect(formatCUIL("20123456789")).toBe("20-12345678-9");
-    expect(formatCUIL("30686935147")).toBe("30-68693514-7");
+    expect(formatCUIL("20123456786")).toBe("20-12345678-6");
+    expect(formatCUIL("30689300479")).toBe("30-68930047-9");
   });
 
   it("re-formats a dashed CUIL correctly", () => {
-    expect(formatCUIL("20-12345678-9")).toBe("20-12345678-9");
+    expect(formatCUIL("20-12345678-6")).toBe("20-12345678-6");
   });
 
   it("returns input unchanged when length != 11", () => {
@@ -69,16 +74,22 @@ describe("formatCUIL", () => {
 
 describe("normalizeCUIL", () => {
   it("removes dashes and spaces", () => {
-    expect(normalizeCUIL("20-12345678-9")).toBe("20123456789");
-    expect(normalizeCUIL("20 12345678 9")).toBe("20123456789");
+    expect(normalizeCUIL("20-12345678-6")).toBe("20123456786");
+    expect(normalizeCUIL("20 12345678 6")).toBe("20123456786");
   });
 });
 
 describe("cuilSchema", () => {
   it("accepts and normalizes a valid CUIL with dashes", () => {
-    const result = cuilSchema.safeParse("20-12345678-9");
+    const result = cuilSchema.safeParse("20-12345678-6");
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data).toBe("20123456789");
+    if (result.success) expect(result.data).toBe("20123456786");
+  });
+
+  it("accepts and normalizes a valid CUIL without dashes", () => {
+    const result = cuilSchema.safeParse("20123456786");
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toBe("20123456786");
   });
 
   it("rejects an invalid CUIL", () => {

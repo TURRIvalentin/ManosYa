@@ -1,10 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarClock, Inbox, MapPin, MessageSquareText, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  Inbox,
+  MapPin,
+  MessageSquareText,
+  ReceiptText,
+  UserRound,
+} from "lucide-react";
 
+import { QuoteForm } from "@/components/requests/QuoteForm";
 import { requireVerifiedEmail } from "@/lib/session";
-import { formatDate } from "@/lib/utils";
+import { formatARS, formatDate } from "@/lib/utils";
 import {
   getRequestDetailForUser,
   type RequestDetail,
@@ -26,6 +35,14 @@ const STATUS_LABELS: Record<RequestDetail["status"], string> = {
   QUOTED: "Con presupuesto",
 };
 
+const QUOTE_STATUS_LABELS: Record<RequestDetail["quotes"][number]["status"], string> = {
+  ACCEPTED: "Aceptado",
+  EXPIRED: "Vencido",
+  PENDING: "Pendiente",
+  REJECTED: "Rechazado",
+  WITHDRAWN: "Retirado",
+};
+
 function Counterpart({ request }: { request: RequestDetail }) {
   const label = request.viewerRole === "provider" ? "Cliente" : "Prestador";
   const name =
@@ -43,6 +60,64 @@ function Counterpart({ request }: { request: RequestDetail }) {
           <p className="text-sm font-medium text-brand-600">{label}</p>
           <p className="text-base font-semibold text-foreground">{name}</p>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function QuoteList({ quotes }: { quotes: RequestDetail["quotes"] }) {
+  if (quotes.length === 0) return null;
+
+  return (
+    <section className="mt-5">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-brand-600">Presupuestos</p>
+          <h2 className="text-xl font-bold text-foreground">Recibidos</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {quotes.length} presupuesto{quotes.length === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-3">
+        {quotes.map((quote) => (
+          <article className="rounded-lg border border-border bg-card p-4" key={quote.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-bold text-foreground">
+                  {formatARS(Number(quote.price))}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {quote.provider.name ?? "Prestador"}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-md bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700">
+                {QUOTE_STATUS_LABELS[quote.status]}
+              </span>
+            </div>
+
+            {quote.comment && (
+              <p className="mt-3 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+                {quote.comment}
+              </p>
+            )}
+
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-muted-foreground">
+              {quote.estimatedDays && (
+                <span className="inline-flex items-center gap-1">
+                  <ReceiptText aria-hidden="true" className="h-4 w-4" />
+                  {quote.estimatedDays} día{quote.estimatedDays === 1 ? "" : "s"} estimado
+                  {quote.estimatedDays === 1 ? "" : "s"}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1">
+                <CalendarClock aria-hidden="true" className="h-4 w-4" />
+                {formatDate(quote.createdAt)}
+              </span>
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -113,6 +188,18 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       </section>
 
       <Counterpart request={request} />
+
+      {request.viewerRole === "provider" && request.status === "OPEN" && request.quotes.length === 0 && (
+        <QuoteForm requestId={request.id} />
+      )}
+
+      {request.viewerRole === "provider" && request.quotes.length > 0 && (
+        <div className="mt-5 rounded-lg bg-muted px-4 py-4 text-sm leading-6 text-muted-foreground">
+          Ya enviaste un presupuesto para este pedido.
+        </div>
+      )}
+
+      <QuoteList quotes={request.quotes} />
 
       <section className="mt-5 rounded-lg bg-muted px-4 py-4 text-sm leading-6 text-muted-foreground">
         <div className="flex gap-3">

@@ -1,4 +1,4 @@
-import type { RequestStatus, UserRole } from "@prisma/client";
+import type { QuoteStatus, RequestStatus, UserRole } from "@prisma/client";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
@@ -24,6 +24,20 @@ export type RequestDetail = {
     id: string;
     name: string | null;
   } | null;
+  quotes: Array<{
+    comment: string | null;
+    createdAt: string;
+    currency: string;
+    estimatedDays: number | null;
+    id: string;
+    price: string;
+    provider: {
+      id: string;
+      name: string | null;
+    };
+    status: QuoteStatus;
+    updatedAt: string;
+  }>;
   service: {
     id: string;
     title: string;
@@ -61,6 +75,22 @@ type DbRequest = {
   createdAt: Date;
   description: string;
   id: string;
+  quotes: Array<{
+    comment: string | null;
+    createdAt: Date;
+    currency: string;
+    estimatedDays: number | null;
+    id: string;
+    price: { toString(): string };
+    providerProfile: {
+      id: string;
+      user: {
+        name: string | null;
+      };
+    };
+    status: QuoteStatus;
+    updatedAt: Date;
+  }>;
   status: RequestStatus;
   targetProviderId: string | null;
   title: string;
@@ -142,6 +172,29 @@ export async function getRequestDetailForUser(
         targetProviderId: true,
         title: true,
         updatedAt: true,
+        quotes: {
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            comment: true,
+            createdAt: true,
+            currency: true,
+            estimatedDays: true,
+            price: true,
+            status: true,
+            updatedAt: true,
+            providerProfile: {
+              select: {
+                id: true,
+                user: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         category: {
           select: {
             id: true,
@@ -232,6 +285,20 @@ export async function getRequestDetailForUser(
           name: provider.user.name,
         }
       : null,
+    quotes: request.quotes.map((quote) => ({
+      comment: quote.comment,
+      createdAt: dateToIso(quote.createdAt),
+      currency: quote.currency,
+      estimatedDays: quote.estimatedDays,
+      id: quote.id,
+      price: quote.price.toString(),
+      provider: {
+        id: quote.providerProfile.id,
+        name: quote.providerProfile.user.name,
+      },
+      status: quote.status,
+      updatedAt: dateToIso(quote.updatedAt),
+    })),
     service: provider?.services[0] ?? null,
     status: request.status,
     title: request.title,

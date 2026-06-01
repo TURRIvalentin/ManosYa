@@ -33,6 +33,22 @@ function requestRow(
     createdAt,
     description: "Necesito reparar una perdida bajo mesada.",
     id: overrides.id ?? "request_1",
+    quotes: [] as Array<{
+      comment: string | null;
+      createdAt: Date;
+      currency: string;
+      estimatedDays: number | null;
+      id: string;
+      price: { toString(): string };
+      providerProfile: {
+        id: string;
+        user: {
+          name: string | null;
+        };
+      };
+      status: "ACCEPTED" | "EXPIRED" | "PENDING" | "REJECTED" | "WITHDRAWN";
+      updatedAt: Date;
+    }>,
     status: "OPEN" as const,
     targetProviderId: overrides.targetProviderId ?? "provider_a",
     title: "Arreglo de perdida",
@@ -205,5 +221,54 @@ describe("getRequestDetailForUser", () => {
     expect(serialized).not.toMatch(
       /email|phone|cuil|dni|license|documents|subscription|plan|mercadoPago/i,
     );
+  });
+
+  it("maps public quotes for authorized viewers", async () => {
+    const client = createClient({
+      request: {
+        ...requestRow(),
+        quotes: [
+          {
+            comment: "Incluye materiales y mano de obra.",
+            createdAt,
+            currency: "ARS",
+            estimatedDays: 3,
+            id: "quote_1",
+            price: { toString: () => "45000" },
+            providerProfile: {
+              id: "provider_a",
+              user: {
+                name: "Prestador A",
+                ...{
+                  email: "prestador@example.com",
+                  phone: "+541199999999",
+                },
+              },
+            },
+            status: "PENDING" as const,
+            updatedAt,
+          },
+        ],
+      },
+    });
+
+    const result = await getRequestDetailForUser("request_1", "user_client", client);
+
+    expect(result?.quotes).toEqual([
+      {
+        comment: "Incluye materiales y mano de obra.",
+        createdAt: "2026-05-31T12:00:00.000Z",
+        currency: "ARS",
+        estimatedDays: 3,
+        id: "quote_1",
+        price: "45000",
+        provider: {
+          id: "provider_a",
+          name: "Prestador A",
+        },
+        status: "PENDING",
+        updatedAt: "2026-05-31T12:30:00.000Z",
+      },
+    ]);
   });
 });

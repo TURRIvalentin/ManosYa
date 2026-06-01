@@ -29,4 +29,9 @@ export const createQuoteSchema = z.object({
   requestId: z.string().trim().min(1, "Pedido inválido.").max(128, "Pedido inválido."),
 });
 
+export const quoteDecisionSchema = z.object({
+  quoteId: z.string().trim().min(1, "Presupuesto inválido.").max(128, "Presupuesto inválido."),
+});
+
 export type CreateQuoteInput = z.infer<typeof createQuoteSchema>;
+export type QuoteDecisionInput = z.infer<typeof quoteDecisionSchema>;

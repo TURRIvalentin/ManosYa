@@ -94,6 +94,11 @@ Cada fase termina con un criterio verificable. No se avanza a la siguiente sin e
 
 **Objetivo:** Un cliente puede pedir un presupuesto y un prestador puede responder.
 
+**Semántica de estados de pedido (Fase 3E):**
+- `OPEN`: el pedido puede recibir presupuestos y todavía no fue contratado. Crear una `Quote` no cambia este estado.
+- `HIRED`: el cliente aceptó un presupuesto; se rechazan las demás quotes pendientes del mismo pedido.
+- `QUOTED`: queda reservado/deprecado por ahora; no se usa en el flujo actual porque un pedido con presupuestos pendientes sigue abierto hasta que el cliente acepte uno.
+
 **Features:**
 - Crear pedido: descripción + hasta 5 fotos (captura directa de cámara mobile)
   - Compresión de imágenes al subir (sharp, max 800px, WebP)

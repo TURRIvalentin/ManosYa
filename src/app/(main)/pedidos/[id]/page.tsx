@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   CalendarClock,
+  CheckCircle2,
   Inbox,
   MapPin,
   MessageSquareText,
@@ -11,6 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 
+import { QuoteDecisionActions } from "@/components/requests/QuoteDecisionActions";
 import { QuoteForm } from "@/components/requests/QuoteForm";
 import { requireVerifiedEmail } from "@/lib/session";
 import { formatARS, formatDate } from "@/lib/utils";
@@ -65,7 +67,17 @@ function Counterpart({ request }: { request: RequestDetail }) {
   );
 }
 
-function QuoteList({ quotes }: { quotes: RequestDetail["quotes"] }) {
+function QuoteList({
+  canDecide,
+  hasAcceptedQuote,
+  quotes,
+  requestStatus,
+}: {
+  canDecide: boolean;
+  hasAcceptedQuote: boolean;
+  quotes: RequestDetail["quotes"];
+  requestStatus: RequestDetail["status"];
+}) {
   if (quotes.length === 0) return null;
 
   return (
@@ -116,6 +128,11 @@ function QuoteList({ quotes }: { quotes: RequestDetail["quotes"] }) {
                 {formatDate(quote.createdAt)}
               </span>
             </div>
+
+            {canDecide &&
+              !hasAcceptedQuote &&
+              requestStatus === "OPEN" &&
+              quote.status === "PENDING" && <QuoteDecisionActions quoteId={quote.id} />}
           </article>
         ))}
       </div>
@@ -128,6 +145,7 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
   const request = await getRequestDetailForUser(id, user.id);
 
   if (!request) notFound();
+  const hasAcceptedQuote = request.quotes.some((quote) => quote.status === "ACCEPTED");
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 pb-28 pt-5 md:px-6 md:pb-8 md:pt-8">
@@ -189,6 +207,16 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
       <Counterpart request={request} />
 
+      {hasAcceptedQuote && (
+        <div className="mt-5 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
+          <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Presupuesto aceptado</p>
+            <p className="mt-1 text-sm">El pedido ya quedó contratado con el prestador elegido.</p>
+          </div>
+        </div>
+      )}
+
       {request.viewerRole === "provider" && request.status === "OPEN" && request.quotes.length === 0 && (
         <QuoteForm requestId={request.id} />
       )}
@@ -199,7 +227,12 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
         </div>
       )}
 
-      <QuoteList quotes={request.quotes} />
+      <QuoteList
+        canDecide={request.viewerRole === "client"}
+        hasAcceptedQuote={hasAcceptedQuote}
+        quotes={request.quotes}
+        requestStatus={request.status}
+      />
 
       <section className="mt-5 rounded-lg bg-muted px-4 py-4 text-sm leading-6 text-muted-foreground">
         <div className="flex gap-3">

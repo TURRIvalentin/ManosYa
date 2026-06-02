@@ -14,6 +14,7 @@ import {
 
 import { QuoteDecisionActions } from "@/components/requests/QuoteDecisionActions";
 import { QuoteForm } from "@/components/requests/QuoteForm";
+import { RequestStatusActions } from "@/components/requests/RequestStatusActions";
 import { requireVerifiedEmail } from "@/lib/session";
 import { formatARS, formatDate } from "@/lib/utils";
 import {
@@ -146,6 +147,12 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
 
   if (!request) notFound();
   const hasAcceptedQuote = request.quotes.some((quote) => quote.status === "ACCEPTED");
+  const isCancelable = request.status === "OPEN" || request.status === "HIRED";
+  const canComplete = request.viewerRole === "client" && request.status === "HIRED";
+  const canCancel =
+    (request.viewerRole === "client" || request.viewerRole === "provider") && isCancelable;
+  const cancelLabel =
+    request.viewerRole === "provider" ? "No puedo tomar este pedido" : "Cancelar pedido";
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 pb-28 pt-5 md:px-6 md:pb-8 md:pt-8">
@@ -206,6 +213,13 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
       </section>
 
       <Counterpart request={request} />
+
+      <RequestStatusActions
+        canCancel={canCancel}
+        canComplete={canComplete}
+        cancelLabel={cancelLabel}
+        requestId={request.id}
+      />
 
       {hasAcceptedQuote && (
         <div className="mt-5 flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">

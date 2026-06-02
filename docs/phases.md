@@ -99,6 +99,12 @@ Cada fase termina con un criterio verificable. No se avanza a la siguiente sin e
 - `HIRED`: el cliente aceptó un presupuesto; se rechazan las demás quotes pendientes del mismo pedido.
 - `QUOTED`: queda reservado/deprecado por ahora; no se usa en el flujo actual porque un pedido con presupuestos pendientes sigue abierto hasta que el cliente acepte uno.
 
+**Cierre y cancelación de pedidos (Fase 3F):**
+- `COMPLETED`: solo el cliente dueño puede marcar como completado un pedido `HIRED`; no modifica quotes.
+- `CANCELLED`: el cliente dueño puede cancelar desde `OPEN`/`HIRED`, y el prestador destinatario puede cancelar participación desde `OPEN`/`HIRED`.
+- En el MVP, un pedido con `targetProviderId` es dirigido exclusivamente a ese prestador. Si el prestador cancela un `OPEN`, la `Request` pasa a `CANCELLED`; el cliente puede crear otro pedido para otro prestador.
+- Si el prestador cancela un pedido `HIRED`, la `Request` pasa a `CANCELLED` y la quote aceptada pasa a `REJECTED`. `QuoteStatus` no tiene `CANCELLED`, por eso no se agrega migración en esta fase.
+
 **Features:**
 - Crear pedido: descripción + hasta 5 fotos (captura directa de cámara mobile)
   - Compresión de imágenes al subir (sharp, max 800px, WebP)

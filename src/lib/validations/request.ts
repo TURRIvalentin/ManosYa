@@ -21,3 +21,9 @@ export const createRequestSchema = z.object({
 });
 
 export type CreateRequestInput = z.infer<typeof createRequestSchema>;
+
+export const requestDecisionSchema = z.object({
+  requestId: z.string().trim().min(1, "Pedido inválido.").max(128, "Pedido inválido."),
+});
+
+export type RequestDecisionInput = z.infer<typeof requestDecisionSchema>;

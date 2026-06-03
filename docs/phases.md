@@ -105,6 +105,14 @@ Cada fase termina con un criterio verificable. No se avanza a la siguiente sin e
 - En el MVP, un pedido con `targetProviderId` es dirigido exclusivamente a ese prestador. Si el prestador cancela un `OPEN`, la `Request` pasa a `CANCELLED`; el cliente puede crear otro pedido para otro prestador.
 - Si el prestador cancela un pedido `HIRED`, la `Request` pasa a `CANCELLED` y la quote aceptada pasa a `REJECTED`. `QuoteStatus` no tiene `CANCELLED`, por eso no se agrega migración en esta fase.
 
+**Reseñas post-trabajo (Fase 3G):**
+- Solo participantes de un pedido `COMPLETED` pueden reseñar; el cliente reseña al prestador y el prestador reseña al cliente.
+- El modelo actual `Review` usa una fila por `requestId`: `clientRating` es el rating que deja el cliente sobre el prestador, y `providerRating` es el rating que deja el prestador sobre el cliente.
+- Para el MVP se mantiene este modelo de una fila por pedido.
+- El rating público del prestador (`ratingAvg`, `ratingCount`) se recalcula transaccionalmente solo con reseñas del cliente hacia el prestador.
+- TODO: no existe reputación pública de clientes todavía; la reseña del prestador al cliente se guarda en `Review`, pero no actualiza un agregado de cliente.
+- Deuda futura: migrar a un modelo normalizado `reviewerId`/`revieweeId`/`rating`/`direction` si se necesitan más capacidades de moderación, reportes o múltiples reseñas.
+
 **Features:**
 - Crear pedido: descripción + hasta 5 fotos (captura directa de cámara mobile)
   - Compresión de imágenes al subir (sharp, max 800px, WebP)

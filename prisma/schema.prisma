@@ -456,7 +456,7 @@ model Review {
   clientProfileId   String
   providerProfileId String
 
-  clientRating       Int
+  clientRating       Int?
   clientComment      String?   @db.Text
   clientReviewedAt   DateTime?
 

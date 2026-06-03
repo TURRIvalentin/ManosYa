@@ -38,6 +38,20 @@ export type RequestDetail = {
     status: QuoteStatus;
     updatedAt: string;
   }>;
+  review: {
+    client: {
+      comment: string | null;
+      createdAt: string | null;
+      rating: number | null;
+      reviewerName: string | null;
+    };
+    provider: {
+      comment: string | null;
+      createdAt: string | null;
+      rating: number | null;
+      reviewerName: string | null;
+    };
+  } | null;
   service: {
     id: string;
     title: string;
@@ -91,6 +105,15 @@ type DbRequest = {
     status: QuoteStatus;
     updatedAt: Date;
   }>;
+  review: {
+    clientComment: string | null;
+    clientRating: number | null;
+    clientReviewedAt: Date | null;
+    deletedAt: Date | null;
+    providerComment: string | null;
+    providerRating: number | null;
+    providerReviewedAt: Date | null;
+  } | null;
   status: RequestStatus;
   targetProviderId: string | null;
   title: string;
@@ -193,6 +216,17 @@ export async function getRequestDetailForUser(
                 },
               },
             },
+          },
+        },
+        review: {
+          select: {
+            clientComment: true,
+            clientRating: true,
+            clientReviewedAt: true,
+            deletedAt: true,
+            providerComment: true,
+            providerRating: true,
+            providerReviewedAt: true,
           },
         },
         category: {
@@ -299,6 +333,26 @@ export async function getRequestDetailForUser(
       status: quote.status,
       updatedAt: dateToIso(quote.updatedAt),
     })),
+    review: request.review && !request.review.deletedAt
+      ? {
+          client: {
+            comment: request.review.clientComment,
+            createdAt: request.review.clientReviewedAt
+              ? dateToIso(request.review.clientReviewedAt)
+              : null,
+            rating: request.review.clientRating,
+            reviewerName: request.clientProfile.user.name,
+          },
+          provider: {
+            comment: request.review.providerComment,
+            createdAt: request.review.providerReviewedAt
+              ? dateToIso(request.review.providerReviewedAt)
+              : null,
+            rating: request.review.providerRating,
+            reviewerName: provider?.user.name ?? null,
+          },
+        }
+      : null,
     service: provider?.services[0] ?? null,
     status: request.status,
     title: request.title,

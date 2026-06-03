@@ -49,6 +49,15 @@ function requestRow(
       status: "ACCEPTED" | "EXPIRED" | "PENDING" | "REJECTED" | "WITHDRAWN";
       updatedAt: Date;
     }>,
+    review: null as {
+      clientComment: string | null;
+      clientRating: number | null;
+      clientReviewedAt: Date | null;
+      deletedAt: Date | null;
+      providerComment: string | null;
+      providerRating: number | null;
+      providerReviewedAt: Date | null;
+    } | null,
     status: "OPEN" as const,
     targetProviderId: overrides.targetProviderId ?? "provider_a",
     title: "Arreglo de perdida",
@@ -270,5 +279,39 @@ describe("getRequestDetailForUser", () => {
         updatedAt: "2026-05-31T12:30:00.000Z",
       },
     ]);
+  });
+
+  it("maps public reviews for authorized viewers", async () => {
+    const client = createClient({
+      request: {
+        ...requestRow(),
+        review: {
+          clientComment: "Excelente trabajo.",
+          clientRating: 5,
+          clientReviewedAt: createdAt,
+          deletedAt: null,
+          providerComment: "Cliente claro y puntual.",
+          providerRating: 4,
+          providerReviewedAt: updatedAt,
+        },
+      },
+    });
+
+    const result = await getRequestDetailForUser("request_1", "user_client", client);
+
+    expect(result?.review).toEqual({
+      client: {
+        comment: "Excelente trabajo.",
+        createdAt: "2026-05-31T12:00:00.000Z",
+        rating: 5,
+        reviewerName: "Cliente A",
+      },
+      provider: {
+        comment: "Cliente claro y puntual.",
+        createdAt: "2026-05-31T12:30:00.000Z",
+        rating: 4,
+        reviewerName: "Prestador A",
+      },
+    });
   });
 });

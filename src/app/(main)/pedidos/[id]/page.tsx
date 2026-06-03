@@ -9,12 +9,14 @@ import {
   MapPin,
   MessageSquareText,
   ReceiptText,
+  Star,
   UserRound,
 } from "lucide-react";
 
 import { QuoteDecisionActions } from "@/components/requests/QuoteDecisionActions";
 import { QuoteForm } from "@/components/requests/QuoteForm";
 import { RequestStatusActions } from "@/components/requests/RequestStatusActions";
+import { ReviewForm } from "@/components/requests/ReviewForm";
 import { requireVerifiedEmail } from "@/lib/session";
 import { formatARS, formatDate } from "@/lib/utils";
 import {
@@ -141,6 +143,86 @@ function QuoteList({
   );
 }
 
+function ReviewCard({
+  comment,
+  createdAt,
+  label,
+  rating,
+  reviewerName,
+}: {
+  comment: string | null;
+  createdAt: string | null;
+  label: string;
+  rating: number | null;
+  reviewerName: string | null;
+}) {
+  if (!rating || !createdAt) return null;
+
+  return (
+    <article className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-brand-600">{label}</p>
+          <p className="mt-1 text-base font-semibold text-foreground">
+            {reviewerName ?? "Usuario"}
+          </p>
+        </div>
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-sm font-semibold text-amber-700">
+          <Star aria-hidden="true" className="h-4 w-4 fill-current" />
+          {rating}/5
+        </span>
+      </div>
+      {comment && (
+        <p className="mt-3 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+          {comment}
+        </p>
+      )}
+      <p className="mt-3 text-xs text-muted-foreground">{formatDate(createdAt)}</p>
+    </article>
+  );
+}
+
+function ReviewSection({ request }: { request: RequestDetail }) {
+  if (request.status !== "COMPLETED") return null;
+
+  const clientReview = request.review?.client ?? null;
+  const providerReview = request.review?.provider ?? null;
+  const viewerAlreadyReviewed =
+    request.viewerRole === "client"
+      ? Boolean(clientReview?.createdAt)
+      : request.viewerRole === "provider"
+        ? Boolean(providerReview?.createdAt)
+        : true;
+
+  return (
+    <section className="mt-5">
+      <div>
+        <p className="text-sm font-medium text-brand-600">Reseñas</p>
+        <h2 className="text-xl font-bold text-foreground">Experiencia del trabajo</h2>
+      </div>
+
+      {!viewerAlreadyReviewed && <ReviewForm requestId={request.id} />}
+
+      <div className="mt-4 grid gap-3">
+        <ReviewCard
+          comment={clientReview?.comment ?? null}
+          createdAt={clientReview?.createdAt ?? null}
+          label="Cliente sobre prestador"
+          rating={clientReview?.rating ?? null}
+          reviewerName={clientReview?.reviewerName ?? null}
+        />
+        <ReviewCard
+          comment={providerReview?.comment ?? null}
+          createdAt={providerReview?.createdAt ?? null}
+          label="Prestador sobre cliente"
+          rating={providerReview?.rating ?? null}
+          reviewerName={providerReview?.reviewerName ?? null}
+        />
+      </div>
+    </section>
+  );
+}
+
 export default async function RequestDetailPage({ params }: RequestDetailPageProps) {
   const [{ id }, user] = await Promise.all([params, requireVerifiedEmail()]);
   const request = await getRequestDetailForUser(id, user.id);
@@ -247,6 +329,8 @@ export default async function RequestDetailPage({ params }: RequestDetailPagePro
         quotes={request.quotes}
         requestStatus={request.status}
       />
+
+      <ReviewSection request={request} />
 
       <section className="mt-5 rounded-lg bg-muted px-4 py-4 text-sm leading-6 text-muted-foreground">
         <div className="flex gap-3">

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
 
 // Este endpoint solo existe para E2E tests — devuelve 404 en cualquier otro entorno.
 // Permite que Playwright lea el token de verificación directamente de DB sin
@@ -13,6 +14,8 @@ export async function GET(request: NextRequest) {
   if (!email) {
     return NextResponse.json({ error: "email param required" }, { status: 400 });
   }
+
+  const { db } = await import("@/lib/db");
 
   const record = await db.verificationToken.findFirst({
     where: { identifier: email },

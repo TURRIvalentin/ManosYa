@@ -8,6 +8,7 @@ import { getCurrentUser, hasClientOnboarded } from "@/lib/session";
 import { getNewRequestFormData } from "@/server/queries/new-request";
 
 export const metadata: Metadata = { title: "Nuevo pedido" };
+export const dynamic = "force-dynamic";
 
 type NewRequestPageProps = {
   searchParams: Promise<{

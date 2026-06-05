@@ -5,6 +5,7 @@ import { getCurrentUser, hasCompletedOnboarding } from "@/lib/session";
 export const metadata: Metadata = {
   title: "ManosYa — Servicios profesionales a domicilio en CABA y GBA",
 };
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const user = await getCurrentUser();

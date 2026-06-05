@@ -4,6 +4,7 @@ import { requireVerifiedEmail } from "@/lib/session";
 import { ProfileTabs } from "@/components/profile/ProfileTabs";
 
 export const metadata: Metadata = { title: "Mi perfil" };
+export const dynamic = "force-dynamic";
 
 export default async function PerfilLayout({
   children,

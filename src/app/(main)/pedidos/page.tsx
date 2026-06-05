@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 import { getUserRequests, type RequestListItem } from "@/server/queries/requests";
 
 export const metadata: Metadata = { title: "Mis pedidos" };
+export const dynamic = "force-dynamic";
 
 type PedidosPageProps = {
   searchParams: Promise<{

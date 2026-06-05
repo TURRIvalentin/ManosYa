@@ -25,6 +25,7 @@ import {
 } from "@/server/queries/request-detail";
 
 export const metadata: Metadata = { title: "Detalle del pedido" };
+export const dynamic = "force-dynamic";
 
 type RequestDetailPageProps = {
   params: Promise<{ id: string }>;
